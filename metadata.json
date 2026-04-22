@@ -1,0 +1,7 @@
+{
+  "name": "Intelligent Audio Conference Platform",
+  "description": "Complete Platform Core UI. Includes Dashboard, Room (WebRTC/Chat), Protocols Archive, Team Management, and Settings.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
