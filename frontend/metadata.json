@@ -1,0 +1,7 @@
+{
+  "name": "Intelligent Audio Conference Platform",
+  "description": "Platform Core UI with Landing Page, Organization Onboarding, Auto-recording Room, and Raise Hand feature.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
