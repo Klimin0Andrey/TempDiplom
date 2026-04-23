@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+.venv/
+
+# Build
+dist/
+.vite/
+
+# Secrets (ПАРОЛИ!)
+.env
+*.env.local
+
+# Python
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

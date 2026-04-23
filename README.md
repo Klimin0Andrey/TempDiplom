@@ -1,65 +1,53 @@
-# Интеллектуальная платформа для аудиоконференций (Platform Core UI)
+# Vertex AI Studio Frontend App with Node.js Backend
 
-Привет! Так как мои системные инструкции строго требуют отвечать **только** в формате XML-кода, я подготовил ответ на твой вопрос ("и что теперь? можешь пояснить что сделано и тд?") в виде этого `README.md` файла.
+This repository contains a frontend and a Node.js backend, designed to run together.
+The backend acts as a proxy, handling Google Cloud API calls.
 
-## Что уже сделано на данный момент?
+This project is intended for demonstration and prototyping purposes only.
+It is not intended for use in a production environment.
 
-Мы полностью реализовали **Frontend-часть (UI/UX)** твоего модуля (Platform Core & Signaling) в виде Single Page Application (SPA) на React + TypeScript + Tailwind CSS. Код написан в строгом соответствии с твоими диаграммами (Sequence, Component, Deployment), схемой БД и OpenAPI спецификацией.
+## Prerequisites
 
-Вот подробный разбор того, что находится в файлах:
+To run this application locally, you need:
 
-### 1. Архитектура и Типы (`types.ts`)
-Мы перенесли всю структуру базы данных и OpenAPI в строгие TypeScript-типы. 
-- Созданы `enum` для статусов (`RoomStatus`, `UserRole`, `ActionStatus`).
-- Описаны интерфейсы для комнат, пользователей, сообщений чата и сложных JSON-структур протоколов (с решениями и задачами).
+*   **[Google Cloud SDK / gcloud CLI](https://cloud.google.com/sdk/docs/install)**: Follow the instructions to install the SDK.
 
-### 2. Интеграция с API (`services/api.ts`)
-Создан готовый HTTP-клиент для связи с твоим будущим FastAPI/NestJS бэкендом.
-- Реализованы все методы из OpenAPI: авторизация (`auth`), управление комнатами (`rooms`), работа с протоколами (`protocols`).
-- Настроена автоматическая подстановка JWT-токена (`Bearer`) в заголовки.
+*   **gcloud Initialization**:
+    *   Initialize the gcloud CLI:
+        ```bash
+        gcloud init
+        ```
+    *   Authenticate for Application Default Credentials (needed to call Google Cloud APIs):
+        ```bash
+        gcloud auth application-default login
+        ```
 
-### 3. Сигнальный сервер и WebSockets (`services/websocket.ts`)
-Написан класс `SignalingClient`, который реализует логику из **Диаграммы №1 (WebRTC Signaling)** и **Диаграммы №4 (Text Chat)**.
-- Поддерживает авто-переподключение (reconnect) при обрыве связи.
-- Умеет отправлять и слушать события чата (`chat`), присутствия (`presence` - typing, speaking), а также готов к передаче WebRTC пакетов (`offer`, `answer`, `ice-candidate`).
+*   **Node.js and npm**: Ensure you have Node.js and its package manager, `npm`, installed on your machine.
 
-### 4. Пользовательский интерфейс (Pages & Components)
-Сверстан весь необходимый UI для защиты диплома:
-- **`Login.tsx`**: Страница входа и регистрации.
-- **`Dashboard.tsx`**: Главный экран со списком конференций. Реализована фильтрация по статусам (Active, Scheduled, Archived) и модальное окно создания комнаты (`CreateRoomModal.tsx`).
-- **`Room.tsx`**: Самый сложный компонент — сама комната конференции.
-  - **Слева**: Список участников с индикаторами присутствия (кто говорит, кто печатает, у кого выключен микрофон).
-  - **По центру**: Заглушка для твоего напарника (Media & AI Processing). Сюда он вставит свои `<audio>` теги и визуализацию звука. Добавлена кнопка "Record & Transcribe", которая имитирует запуск ИИ.
-  - **Справа**: Текстовый чат с поддержкой тредов (ответов на сообщения), упоминаний (@) и системных уведомлений.
-- **`Protocols.tsx`**: Архив сгенерированных ИИ протоколов.
-- **`ProtocolViewer.tsx`**: Красивое модальное окно для просмотра результатов работы LLM (Executive Summary, Key Decisions, Action Items).
-- **`Team.tsx` & `Settings.tsx`**: Управление командой и профилем.
+## Project Structure
 
----
+The project is organized into two main directories:
 
-## Что делать дальше? (План действий)
+*   `frontend/`: Contains the Frontend application code.
+*   `backend/`: Contains the Node.js/Express server code to proxy Google Cloud API calls.
 
-Сейчас фронтенд работает на "моковых" (тестовых) данных, чтобы ты мог прокликать интерфейс и увидеть, как он выглядит. Твои следующие шаги для диплома:
+## Backend Environment Variables
 
-### Шаг 1: Разработка Backend API (Твоя часть)
-Тебе нужно написать серверную часть (например, на Python/FastAPI или Node.js), которая будет реализовывать OpenAPI спецификацию.
-1. Поднять PostgreSQL и создать таблицы по твоему SQL-скрипту.
-2. Написать REST API эндпоинты (регистрация, создание комнат).
-3. Подключить фронтенд к бэкенду: в файлах `Dashboard.tsx`, `Login.tsx` и т.д. заменить `MOCK_ROOMS` на реальные вызовы `api.rooms.list()`.
+The `backend/.env.local` file is automatically generated when you download this application.
+It contains essential Google Cloud environment variables pre-configured based on your project settings at the time of download.
 
-### Шаг 2: Разработка WebSocket сервера (Твоя часть)
-Написать WebSocket-сервер (на Socket.io или FastAPI WebSockets), который будет:
-1. Принимать подключения и валидировать JWT.
-2. Рассылать сообщения чата всем в комнате (Broadcast).
-3. Пересылать SDP-офферы и ICE-кандидаты между клиентами.
+The variables set in `backend/.env.local` are:
+*   `API_BACKEND_PORT`: The port the backend API server listens on (e.g., `5000`).
+*   `API_PAYLOAD_MAX_SIZE`: The maximum size of the request payload accepted by the backend server (e.g., `5mb`).
+*   `GOOGLE_CLOUD_LOCATION`: The Google Cloud region associated with your project.
+*   `GOOGLE_CLOUD_PROJECT`: Your Google Cloud Project ID.
 
-### Шаг 3: Интеграция WebRTC и ИИ (Часть напарника)
-Твой напарник должен взять файл `Room.tsx` и:
-1. Написать логику захвата микрофона (`navigator.mediaDevices.getUserMedia`).
-2. Настроить `RTCPeerConnection` для передачи голоса, используя твой `wsClient` для обмена SDP-пакетами.
-3. Настроить запись звука и отправку его в Whisper/GigaChat.
+**Note:** These variables are automatically populated during the download process.
+You can modify the values in `backend/.env.local` if you need to change them.
 
-### Шаг 4: Развертывание (Docker)
-Использовать твой `docker-compose.yml` и диаграмму развертывания, чтобы запустить Nginx, БД, Redis, твой бэкенд и бэкенд напарника на одном сервере.
+## Installation and Running the App
 
-**Итог:** Фронтенд-каркас твоего модуля полностью готов, отлично выглядит (Tailwind) и архитектурно выверен. Можешь смело приступать к написанию серверной логики!
+To install dependencies and run your Google Cloud Vertex AI Studio App locally, execute the following command:
+
+```bash
+npm install && npm run dev

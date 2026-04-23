@@ -1,23 +1,12 @@
 {
-  "name": "intelligent-audio-conference-platform-frontend",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "name": "intelligent-audio-conference-platform",
+  "workspaces": ["frontend", "backend"], 
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "react": "latest",
-    "react-dom": "latest",
-    "react-router-dom": "latest",
-    "lucide-react": "latest"
+    "dev-frontend": "npm run dev --prefix frontend",
+    "dev-backend": "npm run dev --prefix backend",
+    "dev": "concurrently \"npm run dev-frontend\" \"npm run dev-backend\""
   },
   "devDependencies": {
-    "@types/node": "latest",
-    "@vitejs/plugin-react": "latest",
-    "typescript": "latest",
-    "vite": "latest"
+    "concurrently": "latest"
   }
 }
