@@ -102,7 +102,7 @@ async def get_rooms(
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
 
-    room_responses = []
+    room_responses =[]
     for r in rooms:
         # Count participants
         part_count_result = await db.execute(
@@ -177,9 +177,56 @@ async def get_room_by_id(
             "created_at": room.created_at,
             "updated_at": room.updated_at,
         },
-        "participants": [],
-        "protocols": [],
+        "participants":[],
+        "protocols":[],
     }
+
+@router.get("/{room_id}/messages")
+async def get_chat_history(
+    room_id: str,
+    limit: int = 50,
+    before: str = None, # Задел на пагинацию
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Get chat history for a room."""
+    # Verify user has access to room
+    result = await db.execute(
+        select(models.Room).where(models.Room.id == room_id)
+    )
+    room = result.scalars().first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    query = (
+        select(models.ChatMessage, models.User.first_name, models.User.last_name)
+        .outerjoin(models.User, models.ChatMessage.user_id == models.User.id)
+        .where(models.ChatMessage.room_id == room_id)
+        .order_by(models.ChatMessage.created_at.desc())
+        .limit(limit)
+    )
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    messages =[]
+    for msg, first_name, last_name in reversed(rows):
+        display_name = (
+            f"{first_name} {last_name or ''}".strip()
+            if first_name
+            else "Unknown User"
+        )
+        messages.append({
+            "id": str(msg.id),
+            "userId": str(msg.user_id) if msg.user_id else None,
+            "username": display_name,
+            "message": msg.message,
+            "messageType": "text",
+            "createdAt": msg.created_at.isoformat(),
+            "replyToId": str(msg.reply_to_id) if msg.reply_to_id else None,
+        })
+
+    return {"success": True, "messages": messages}
 
 
 @router.put("/{room_id}", response_model=schemas.RoomResponse)

@@ -23,12 +23,12 @@ class ConnectionManager:
     async def connect(self, websocket: WebSocket, room_id: str, user_id: str):
         await websocket.accept()
         if room_id not in self.active_connections:
-            self.active_connections[room_id] = []
+            self.active_connections[room_id] =[]
         self.active_connections[room_id].append((user_id, websocket))
 
     def disconnect(self, room_id: str, websocket: WebSocket):
         if room_id in self.active_connections:
-            self.active_connections[room_id] = [
+            self.active_connections[room_id] =[
                 (uid, ws) for (uid, ws) in self.active_connections[room_id]
                 if ws != websocket
             ]
@@ -47,7 +47,7 @@ class ConnectionManager:
     def get_participants(self, room_id: str) -> list:
         if room_id in self.active_connections:
             return list(set(uid for uid, _ in self.active_connections[room_id]))
-        return []
+        return[]
 
 
 manager = ConnectionManager()
@@ -77,7 +77,7 @@ async def websocket_endpoint(
         await websocket.close(code=1008, reason="No user_id in token")
         return
 
-    # 2. Получаем данные пользователя из БД для красивого отображения имени
+    # 2. Получаем данные пользователя из БД
     async with AsyncSessionLocal() as db:
         result = await db.execute(
             select(models.User).where(models.User.id == user_id)
@@ -104,6 +104,42 @@ async def websocket_endpoint(
         exclude_user=user_id,
     )
 
+    # 4. Отправляем историю чата ТОЛЬКО что подключившемуся участнику
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(models.ChatMessage, models.User.first_name, models.User.last_name)
+            .outerjoin(models.User, models.ChatMessage.user_id == models.User.id)
+            .where(models.ChatMessage.room_id == room_id)
+            .order_by(models.ChatMessage.created_at.desc()) # Сортируем от новых к старым
+            .limit(50) # Берем последние 50
+        )
+        rows = result.all()
+
+        history =[]
+        # reversed возвращает список в хронологическом порядке (сверху вниз)
+        for msg, first_name, last_name in reversed(rows):
+            display_name = (
+                f"{first_name} {last_name or ''}".strip()
+                if first_name
+                else "Unknown User"
+            )
+            history.append({
+                "type": "chat",
+                "id": str(msg.id),
+                "userId": str(msg.user_id) if msg.user_id else None,
+                "username": display_name,
+                "message": msg.message,
+                "messageType": "text",
+                "createdAt": msg.created_at.isoformat(),
+                "replyToId": str(msg.reply_to_id) if msg.reply_to_id else None,
+            })
+
+        if history:
+            await websocket.send_json({
+                "type": "chat_history",
+                "messages": history,
+            })
+
     try:
         while True:
             # Ожидаем сообщения от клиента
@@ -112,7 +148,7 @@ async def websocket_endpoint(
             msg_type = message_data.get("type")
 
             if msg_type == "chat":
-                # 4.1 Текстовый чат: Рассылаем всем (включая отправителя)
+                # Рассылаем всем
                 chat_msg = {
                     "type": "chat",
                     "id": str(uuid.uuid4()),
@@ -125,10 +161,9 @@ async def websocket_endpoint(
                 }
                 await manager.broadcast(room_id, chat_msg)
 
-                # Сохраняем сообщение в базу данных
+                # Сохраняем сообщение в базу
                 async with AsyncSessionLocal() as db:
                     reply_to = message_data.get("reply_to_id")
-                    # Проверяем, существует ли сообщение, на которое отвечаем
                     if reply_to:
                         result = await db.execute(
                             select(models.ChatMessage).where(
@@ -137,7 +172,7 @@ async def websocket_endpoint(
                             )
                         )
                         if not result.scalars().first():
-                            reply_to = None  # Игнорируем несуществующий reply
+                            reply_to = None
 
                     chat_message = models.ChatMessage(
                         room_id=room_id,
@@ -149,7 +184,6 @@ async def websocket_endpoint(
                     await db.commit()
 
             elif msg_type == "presence":
-                # 4.2 Статусы (печатает, отошел и тд): рассылаем всем кроме отправителя
                 presence_msg = {
                     "type": "presence",
                     "userId": user_id,
@@ -159,7 +193,6 @@ async def websocket_endpoint(
                 await manager.broadcast(room_id, presence_msg, exclude_user=user_id)
 
             elif msg_type in ("offer", "answer", "ice-candidate"):
-                # 4.3 WebRTC Signaling: отправляем СТРОГО конкретному адресату (target)
                 target = message_data.get("target")
                 signaling_msg = {
                     "type": msg_type,
@@ -170,7 +203,6 @@ async def websocket_endpoint(
                 }
 
                 if target and room_id in manager.active_connections:
-                    # Ищем target в списке соединений
                     for uid, ws in manager.active_connections[room_id]:
                         if uid == target:
                             try:
@@ -180,7 +212,6 @@ async def websocket_endpoint(
                             break
 
     except WebSocketDisconnect:
-        # Штатное отключение (пользователь закрыл вкладку)
         manager.disconnect(room_id, websocket)
         await manager.broadcast(
             room_id,
@@ -191,6 +222,5 @@ async def websocket_endpoint(
             },
         )
     except Exception as e:
-        # Нештатное отключение (ошибка сети и т.д.)
         print(f"WebSocket error for user {user_id} in room {room_id}: {e}")
         manager.disconnect(room_id, websocket)

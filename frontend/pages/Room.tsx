@@ -4,34 +4,35 @@ import {
   Mic, MicOff, PhoneOff, Users, MessageSquare, 
   Settings, Hand, Share, MoreVertical, Send, Info, FileText, Reply, X, Circle
 } from 'lucide-react';
-import { Participant, ChatMessage, Protocol } from '../types.ts';
+import { Participant, ChatMessage, ProtocolResponse } from '../types.ts';
 import ProtocolViewer from '../components/ProtocolViewer.tsx';
 import ConnectionStatus from '../components/ConnectionStatus.tsx';
 import { wsClient } from '../services/websocket.ts';
 
-const MOCK_PROTOCOL: Protocol = {
+const MOCK_PROTOCOL: ProtocolResponse = {
   id: 'prot_123',
-  roomId: 'room_123',
+  room_id: 'room_123',
   title: 'Project Alpha Kickoff Summary',
-  createdAt: new Date().toISOString(),
-  summaryJson: {
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+  summary_json: {
     summary: 'Discussed the platform architecture and task distribution between modules. Agreed to use PostgreSQL and WebSockets for real-time signaling.',
     topics: ['Architecture', 'Database', 'WebRTC Signaling']
   },
-  decisionsJson: {
+  decisions_json: {
     decisions: [
       'Use PostgreSQL as the primary database',
       'Implement WebSocket server for signaling',
       'Store protocols in JSONB format'
     ]
   },
-  actionItemsJson: {
+  action_items_json: {
     action_items: [
       { id: 'a1', task: 'Design ER diagram', assignee: 'Alex', deadline: '2026-04-20', status: 'pending' },
       { id: 'a2', task: 'Setup WebSocket server', assignee: 'Dmitry', deadline: '2026-04-22', status: 'in_progress' }
     ]
   },
-  pdfUrl: '#'
+  pdf_url: '#'
 };
 
 export default function Room() {
@@ -116,13 +117,21 @@ export default function Room() {
       }]);
     };
 
+        const handleChatHistory = (data: any) => {
+      if (data.messages && Array.isArray(data.messages)) {
+        setMessages(prev => [...data.messages, ...prev]);
+      }
+    };
+
     wsClient.on('chat', handleIncomingChat);
+    wsClient.on('chat_history', handleChatHistory);
     wsClient.on('system', handleSystem);
     wsClient.on('presence', handlePresence);
     wsClient.on('protocol_ready', handleProtocolReady);
 
     return () => {
       wsClient.off('chat', handleIncomingChat);
+      wsClient.off('chat_history', handleChatHistory);
       wsClient.off('system', handleSystem);
       wsClient.off('presence', handlePresence);
       wsClient.off('protocol_ready', handleProtocolReady);
