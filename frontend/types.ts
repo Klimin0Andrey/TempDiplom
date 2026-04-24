@@ -47,22 +47,22 @@ export interface RoomResponse {
   id: string;
   name: string;
   description?: string;
-  inviteCode: string;
-  inviteLink: string;
+  invite_code: string;
+  invite_link: string;
   status: RoomStatus;
-  creatorId: string;
-  creatorName: string;
-  scheduledStartAt?: string;
-  scheduledEndAt?: string;
-  startedAt?: string;
-  endedAt?: string;
+  creator_id: string;
+  creator_name: string;
+  scheduled_start_at?: string;
+  scheduled_end_at?: string;
+  started_at?: string;
+  ended_at?: string;
   durationSeconds?: number;
-  isRecording: boolean;
-  chatEnabled: boolean;
-  participantsCount: number;
-  maxParticipants?: number;
-  createdAt: string;
-  updatedAt: string;
+  is_recording: boolean;
+  chat_enabled: boolean;
+  participants_count: number;
+  max_participants?: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ParticipantResponse {

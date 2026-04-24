@@ -45,24 +45,21 @@ const fetchRooms = async () => {
     navigate(`/room/${roomId}`);
   };
 
-  const handleCreateRoom = async (data: { name: string; description: string; scheduledStartAt: string; maxParticipants: number }) => {
-    try {
-      const newRoom = await api.rooms.create({
-        name: data.name,
-        description: data.description,
-        scheduledStartAt: data.scheduledStartAt ? new Date(data.scheduledStartAt).toISOString() : undefined,
-        maxParticipants: data.maxParticipants
-      });
-      
-      // If the current filter allows seeing the new room, add it to the list
-      if (filter === 'all' || filter === RoomStatus.SCHEDULED) {
-        setRooms([newRoom, ...rooms]);
-      }
-    } catch (err: any) {
-      console.error("Failed to create room:", err);
-      alert("Failed to create room: " + (err.message || "Unknown error"));
-    }
-  };
+const handleCreateRoom = async (data: { name: string; description: string; scheduledStartAt: string; maxParticipants: number }) => {
+  try {
+    await api.rooms.create({
+      name: data.name,
+      description: data.description,
+      scheduledStartAt: data.scheduledStartAt ? new Date(data.scheduledStartAt).toISOString() : undefined,
+      maxParticipants: data.maxParticipants
+    });
+    
+    fetchRooms();
+  } catch (err: any) {
+    console.error("Failed to create room:", err);
+    alert("Failed to create room: " + (err.message || "Unknown error"));
+  }
+};
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -129,7 +126,7 @@ const fetchRooms = async () => {
                   <div className="flex items-center justify-between mt-auto pt-4 border-t border-gray-100">
                     <div className="flex items-center text-gray-500 text-sm bg-gray-50 px-2.5 py-1 rounded-md border border-gray-100">
                       <Users className="w-4 h-4 mr-1.5 text-gray-400" />
-                      <span className="font-medium">{room.participantsCount} {room.maxParticipants ? `/ ${room.maxParticipants}` : ''}</span>
+                      <span className="font-medium">{room.participants_count} {room.max_participants ? `/ ${room.max_participants}` : ''}</span>
                     </div>
                     <button 
                       onClick={() => handleJoinRoom(room.id)}

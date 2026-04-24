@@ -5,8 +5,8 @@ from sqlalchemy import select, func
 from database import get_db
 import models
 import schemas
-from dependencies import get_current_user
-from models import RoomStatusEnum
+from dependencies import get_current_active_user, RequireRole
+from models import RoomStatusEnum, RoleEnum
 
 router = APIRouter(prefix="/api/rooms", tags=["Rooms"])
 
@@ -16,13 +16,38 @@ def generate_invite_code() -> str:
     return secrets.token_urlsafe(6)[:8].upper()
 
 
+async def _get_room_with_permissions(
+    room_id: str, db: AsyncSession, current_user: models.User
+) -> models.Room:
+    """Check permissions and return room."""
+    result = await db.execute(
+        select(models.Room).where(
+            models.Room.id == room_id,
+            models.Room.organization_id == current_user.organization_id,
+        )
+    )
+    room = result.scalars().first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found in your organization")
+
+    if (
+        current_user.role not in [RoleEnum.owner, RoleEnum.admin]
+        and room.creator_id != current_user.id
+    ):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return room
+
+
+# 1. СОЗДАНИЕ КОМНАТЫ
 @router.post("", response_model=schemas.RoomResponse, status_code=status.HTTP_201_CREATED)
 async def create_room(
     request: schemas.CreateRoomRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(
+        RequireRole([RoleEnum.owner, RoleEnum.admin, RoleEnum.manager])
+    ),
 ):
-    """Create a new conference room."""
     invite_code = generate_invite_code()
 
     new_room = models.Room(
@@ -37,13 +62,11 @@ async def create_room(
     db.add(new_room)
     await db.flush()
 
-    # Add creator as organizer
-    participant = models.Participant(
+    db.add(models.Participant(
         room_id=new_room.id,
         user_id=current_user.id,
         role_in_room="organizer",
-    )
-    db.add(participant)
+    ))
     await db.commit()
     await db.refresh(new_room)
 
@@ -64,54 +87,56 @@ async def create_room(
     }
 
 
+# 2. СПИСОК КОМНАТ (с JOIN для имен создателей)
 @router.get("", response_model=schemas.RoomsListResponse)
 async def get_rooms(
     status_filter: str = Query(None, alias="status"),
     limit: int = 20,
     offset: int = 0,
     db: AsyncSession = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_current_active_user),
 ):
-    """Get list of rooms for the current user."""
-    # Rooms where user is creator OR participant
-    participant_room_ids = select(models.Participant.room_id).where(
-        models.Participant.user_id == current_user.id
+    query = (
+        select(models.Room, models.User.first_name, models.User.last_name)
+        .outerjoin(models.User, models.Room.creator_id == models.User.id)
+        .where(models.Room.organization_id == current_user.organization_id)
     )
 
-    query = select(models.Room).where(
-        (models.Room.creator_id == current_user.id)
-        | (models.Room.id.in_(participant_room_ids))
-    )
+    if current_user.role not in [RoleEnum.owner, RoleEnum.admin]:
+        participant_room_ids = select(models.Participant.room_id).where(
+            models.Participant.user_id == current_user.id
+        )
+        query = query.where(
+            (models.Room.creator_id == current_user.id)
+            | (models.Room.id.in_(participant_room_ids))
+        )
 
     if status_filter and status_filter not in ("all", "undefined", ""):
         query = query.where(models.Room.status == status_filter)
 
     query = query.order_by(models.Room.created_at.desc()).limit(limit).offset(offset)
-
     result = await db.execute(query)
-    rooms = result.scalars().all()
+    rows = result.all()
 
-    # Count total
-    count_query = select(func.count()).select_from(models.Room).where(
-        (models.Room.creator_id == current_user.id)
-        | (models.Room.id.in_(participant_room_ids))
+    total_result = await db.execute(
+        select(func.count()).select_from(models.Room).where(
+            models.Room.organization_id == current_user.organization_id
+        )
     )
-    if status_filter and status_filter != "all":
-        count_query = count_query.where(models.Room.status == status_filter)
-
-    total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
 
-    room_responses =[]
-    for r in rooms:
-        # Count participants
-        part_count_result = await db.execute(
-            select(func.count()).select_from(models.Participant).where(
-                models.Participant.room_id == r.id
-            )
+    room_responses = []
+    for r, first_name, last_name in rows:
+        pc_result = await db.execute(
+            select(func.count())
+            .select_from(models.Participant)
+            .where(models.Participant.room_id == r.id)
         )
-        part_count = part_count_result.scalar() or 0
-
+        creator_name = (
+            f"{first_name} {last_name or ''}".strip()
+            if first_name
+            else "Unknown"
+        )
         room_responses.append({
             "id": str(r.id),
             "name": r.name,
@@ -120,9 +145,9 @@ async def get_rooms(
             "invite_link": f"/join/{r.invite_code}",
             "status": r.status.value,
             "creator_id": str(r.creator_id),
-            "creator_name": f"{current_user.first_name} {current_user.last_name or ''}".strip(),
+            "creator_name": creator_name,
             "scheduled_start_at": r.scheduled_start_at,
-            "participants_count": part_count,
+            "participants_count": pc_result.scalar() or 0,
             "created_at": r.created_at,
             "updated_at": r.updated_at,
         })
@@ -136,22 +161,32 @@ async def get_rooms(
     }
 
 
+# 3. ДЕТАЛИ КОМНАТЫ (с JOIN для имени создателя)
 @router.get("/{room_id}", response_model=schemas.RoomDetailResponse)
 async def get_room_by_id(
     room_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_current_active_user),
 ):
-    """Get room details by ID."""
     result = await db.execute(
-        select(models.Room).where(models.Room.id == room_id)
+        select(models.Room, models.User.first_name, models.User.last_name)
+        .outerjoin(models.User, models.Room.creator_id == models.User.id)
+        .where(
+            models.Room.id == room_id,
+            models.Room.organization_id == current_user.organization_id,
+        )
     )
-    room = result.scalars().first()
-
-    if not room:
+    row = result.first()
+    if not row:
         raise HTTPException(status_code=404, detail="Room not found")
 
-    # Get participants
+    room, first_name, last_name = row
+    creator_name = (
+        f"{first_name} {last_name or ''}".strip()
+        if first_name
+        else "Organizer"
+    )
+
     part_result = await db.execute(
         select(models.Participant).where(
             models.Participant.room_id == room_id,
@@ -170,32 +205,33 @@ async def get_room_by_id(
             "invite_link": f"/join/{room.invite_code}",
             "status": room.status.value,
             "creator_id": str(room.creator_id),
-            "creator_name": f"{current_user.first_name} {current_user.last_name or ''}".strip(),
+            "creator_name": creator_name,
             "scheduled_start_at": room.scheduled_start_at,
             "participants_count": len(participants),
             "chat_enabled": room.chat_enabled,
             "created_at": room.created_at,
             "updated_at": room.updated_at,
         },
-        "participants":[],
-        "protocols":[],
+        "participants": [],
+        "protocols": [],
     }
 
+
+# 4. ИСТОРИЯ ЧАТА
 @router.get("/{room_id}/messages")
 async def get_chat_history(
     room_id: str,
     limit: int = 50,
-    before: str = None, # Задел на пагинацию
     db: AsyncSession = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_current_active_user),
 ):
-    """Get chat history for a room."""
-    # Verify user has access to room
-    result = await db.execute(
-        select(models.Room).where(models.Room.id == room_id)
+    check = await db.execute(
+        select(models.Room).where(
+            models.Room.id == room_id,
+            models.Room.organization_id == current_user.organization_id,
+        )
     )
-    room = result.scalars().first()
-    if not room:
+    if not check.scalars().first():
         raise HTTPException(status_code=404, detail="Room not found")
 
     query = (
@@ -205,16 +241,15 @@ async def get_chat_history(
         .order_by(models.ChatMessage.created_at.desc())
         .limit(limit)
     )
-
     result = await db.execute(query)
     rows = result.all()
 
-    messages =[]
+    messages = []
     for msg, first_name, last_name in reversed(rows):
         display_name = (
             f"{first_name} {last_name or ''}".strip()
             if first_name
-            else "Unknown User"
+            else "User"
         )
         messages.append({
             "id": str(msg.id),
@@ -229,24 +264,15 @@ async def get_chat_history(
     return {"success": True, "messages": messages}
 
 
+# 5. ОБНОВЛЕНИЕ
 @router.put("/{room_id}", response_model=schemas.RoomResponse)
 async def update_room(
     room_id: str,
     request: schemas.UpdateRoomRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_current_active_user),
 ):
-    """Update room (only creator can edit)."""
-    result = await db.execute(
-        select(models.Room).where(
-            models.Room.id == room_id,
-            models.Room.creator_id == current_user.id,
-        )
-    )
-    room = result.scalars().first()
-
-    if not room:
-        raise HTTPException(status_code=404, detail="Room not found or access denied")
+    room = await _get_room_with_permissions(room_id, db, current_user)
 
     if request.name is not None:
         room.name = request.name
@@ -266,7 +292,7 @@ async def update_room(
         "invite_link": f"/join/{room.invite_code}",
         "status": room.status.value,
         "creator_id": str(room.creator_id),
-        "creator_name": f"{current_user.first_name} {current_user.last_name or ''}".strip(),
+        "creator_name": "Organizer",
         "scheduled_start_at": room.scheduled_start_at,
         "participants_count": 0,
         "created_at": room.created_at,
@@ -274,74 +300,42 @@ async def update_room(
     }
 
 
+# 6. УДАЛЕНИЕ
 @router.delete("/{room_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_room(
     room_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_current_active_user),
 ):
-    """Delete room (only creator can delete)."""
-    result = await db.execute(
-        select(models.Room).where(
-            models.Room.id == room_id,
-            models.Room.creator_id == current_user.id,
-        )
-    )
-    room = result.scalars().first()
-
-    if not room:
-        raise HTTPException(status_code=404, detail="Room not found or access denied")
-
+    room = await _get_room_with_permissions(room_id, db, current_user)
     await db.delete(room)
     await db.commit()
     return None
 
 
+# 7. АРХИВАЦИЯ
 @router.patch("/{room_id}/archive")
 async def archive_room(
     room_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_current_active_user),
 ):
-    """Archive room (soft delete)."""
-    result = await db.execute(
-        select(models.Room).where(
-            models.Room.id == room_id,
-            models.Room.creator_id == current_user.id,
-        )
-    )
-    room = result.scalars().first()
-
-    if not room:
-        raise HTTPException(status_code=404, detail="Room not found or access denied")
-
+    room = await _get_room_with_permissions(room_id, db, current_user)
     room.status = RoomStatusEnum.archived
     await db.commit()
-
     return {"success": True, "message": "Room archived"}
 
 
+# 8. РЕГЕНЕРАЦИЯ INVITE
 @router.post("/{room_id}/regenerate-invite")
 async def regenerate_invite(
     room_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_current_active_user),
 ):
-    """Regenerate invite code (only creator)."""
-    result = await db.execute(
-        select(models.Room).where(
-            models.Room.id == room_id,
-            models.Room.creator_id == current_user.id,
-        )
-    )
-    room = result.scalars().first()
-
-    if not room:
-        raise HTTPException(status_code=404, detail="Room not found or access denied")
-
+    room = await _get_room_with_permissions(room_id, db, current_user)
     room.invite_code = generate_invite_code()
     await db.commit()
-
     return {
         "success": True,
         "invite_code": room.invite_code,
