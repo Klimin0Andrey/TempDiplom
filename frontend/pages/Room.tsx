@@ -9,17 +9,6 @@ import ProtocolViewer from '../components/ProtocolViewer.tsx';
 import ConnectionStatus from '../components/ConnectionStatus.tsx';
 import { wsClient } from '../services/websocket.ts';
 
-const MOCK_PARTICIPANTS: Participant[] = [
-  { id: 'p1', userId: 'u1', username: 'Alex (You)', roleInRoom: 'organizer', isMuted: false, handRaised: false, presenceStatus: 'speaking' },
-  { id: 'p2', userId: 'u2', username: 'Maria Ivanova', roleInRoom: 'participant', isMuted: true, handRaised: true, presenceStatus: 'idle' },
-  { id: 'p3', userId: 'u3', username: 'Dmitry Petrov', roleInRoom: 'participant', isMuted: false, handRaised: false, presenceStatus: 'typing' },
-];
-
-const INITIAL_MESSAGES: ChatMessage[] = [
-  { id: 'm0', message: 'Maria Ivanova joined the meeting', messageType: 'system', createdAt: new Date(Date.now() - 360000).toISOString() },
-  { id: 'm1', userId: 'u2', username: 'Maria Ivanova', message: 'Hello everyone! Can you hear me?', messageType: 'text', createdAt: new Date(Date.now() - 300000).toISOString() },
-];
-
 const MOCK_PROTOCOL: Protocol = {
   id: 'prot_123',
   roomId: 'room_123',
@@ -51,10 +40,15 @@ export default function Room() {
   
   const [isMuted, setIsMuted] = useState(false);
   const [isHandRaised, setIsHandRaised] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
   const [showChat, setShowChat] = useState(true);
   const [showParticipants, setShowParticipants] = useState(true);
   const [chatInput, setChatInput] = useState('');
-  const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
+  
+  // State is now dynamic, driven by WebSockets
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  
   const [replyingTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [isProtocolViewerOpen, setIsProtocolViewerOpen] = useState(false);
   
@@ -64,11 +58,53 @@ export default function Room() {
   useEffect(() => {
     if (!roomId) return;
     
-    const token = localStorage.getItem('accessToken') || 'mock_token';
+    const token = localStorage.getItem('accessToken');
+    if (!token) {
+      navigate('/login');
+      return;
+    }
+    
     wsClient.connect(roomId, token);
 
     const handleIncomingChat = (msg: ChatMessage) => {
       setMessages(prev => [...prev, msg]);
+    };
+
+    const handleSystem = (data: any) => {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        message: data.message,
+        messageType: 'system',
+        createdAt: new Date().toISOString()
+      }]);
+
+      if (data.message.includes('joined')) {
+        setParticipants(prev => {
+          if (prev.find(p => p.userId === data.userId)) return prev;
+          return [...prev, {
+            id: data.userId,
+            userId: data.userId,
+            username: data.username || 'User',
+            roleInRoom: 'participant',
+            isMuted: false,
+            handRaised: false,
+            presenceStatus: 'idle'
+          }];
+        });
+      } else if (data.message.includes('left')) {
+        setParticipants(prev => prev.filter(p => p.userId !== data.userId));
+      }
+    };
+
+    const handlePresence = (data: any) => {
+      setParticipants(prev => prev.map(p => {
+        if (p.userId === data.userId) {
+          if (data.status === 'hand_raised') return { ...p, handRaised: true };
+          if (data.status === 'idle') return { ...p, handRaised: false, presenceStatus: 'idle' };
+          return { ...p, presenceStatus: data.status };
+        }
+        return p;
+      }));
     };
 
     const handleProtocolReady = (data: any) => {
@@ -81,14 +117,18 @@ export default function Room() {
     };
 
     wsClient.on('chat', handleIncomingChat);
+    wsClient.on('system', handleSystem);
+    wsClient.on('presence', handlePresence);
     wsClient.on('protocol_ready', handleProtocolReady);
 
     return () => {
       wsClient.off('chat', handleIncomingChat);
+      wsClient.off('system', handleSystem);
+      wsClient.off('presence', handlePresence);
       wsClient.off('protocol_ready', handleProtocolReady);
       wsClient.disconnect();
     };
-  }, [roomId]);
+  }, [roomId, navigate]);
 
   useEffect(() => {
     if (chatEndRef.current) {
@@ -100,10 +140,13 @@ export default function Room() {
     e.preventDefault();
     if (!chatInput.trim() || !roomId) return;
     
+    // Send via WebSocket. The server will broadcast it back to us, 
+    // so we don't append it locally here.
     wsClient.sendChat(roomId, chatInput.trim(), replyingTo?.id);
     
     setChatInput('');
     setReplyTo(null);
+    wsClient.updatePresence('idle');
   };
 
   const handleTyping = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -122,20 +165,7 @@ export default function Room() {
   };
 
   const handleLeave = () => {
-    // Mocking the end of the meeting and protocol generation
-    setMessages(prev => [...prev, {
-      id: Date.now().toString(),
-      message: 'Meeting ended. Generating protocol...',
-      messageType: 'system',
-      createdAt: new Date().toISOString()
-    }]);
-    
-    setTimeout(() => {
-      wsClient.send('protocol_ready', { title: 'Project Alpha Kickoff Summary' });
-    }, 2000);
-    
-    // In a real app, we would navigate away after a delay or confirmation
-    // navigate('/dashboard');
+    navigate('/dashboard');
   };
 
   return (
@@ -147,7 +177,7 @@ export default function Room() {
             <Mic className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="font-semibold text-sm">Project Alpha Kickoff</h1>
+            <h1 className="font-semibold text-sm">Conference Room</h1>
             <div className="flex items-center space-x-2">
               <span className="flex items-center text-xs text-red-400 font-medium animate-pulse">
                 <Circle className="w-2 h-2 fill-current mr-1" /> Auto-Recording
@@ -189,15 +219,34 @@ export default function Room() {
         {showParticipants && (
           <div className="w-64 bg-gray-800 border-r border-gray-700 flex flex-col shrink-0">
             <div className="p-4 border-b border-gray-700">
-              <h2 className="font-semibold text-sm">Participants ({MOCK_PARTICIPANTS.length})</h2>
+              <h2 className="font-semibold text-sm">Participants ({participants.length + 1})</h2>
             </div>
             <div className="flex-1 overflow-y-auto p-2 space-y-1">
-              {MOCK_PARTICIPANTS.map(p => (
+              {/* Self Participant (Mocked for UI since we don't get our own presence back) */}
+              <div className="flex items-center justify-between p-2 rounded-md hover:bg-gray-700 group">
+                <div className="flex items-center space-x-3 overflow-hidden">
+                  <div className="relative">
+                    <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-sm font-bold">
+                      Y
+                    </div>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-sm truncate">You</span>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-1 text-gray-400">
+                  {isHandRaised && <Hand className="w-4 h-4 text-yellow-500" />}
+                  {isMuted ? <MicOff className="w-4 h-4 text-red-400" /> : <Mic className="w-4 h-4 text-green-400" />}
+                </div>
+              </div>
+
+              {/* Remote Participants */}
+              {participants.map(p => (
                 <div key={p.id} className="flex items-center justify-between p-2 rounded-md hover:bg-gray-700 group">
                   <div className="flex items-center space-x-3 overflow-hidden">
                     <div className="relative">
-                      <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-sm font-bold">
-                        {p.username.charAt(0)}
+                      <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-sm font-bold">
+                        {p.username.charAt(0).toUpperCase()}
                       </div>
                       {p.presenceStatus === 'speaking' && (
                         <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-green-500 border-2 border-gray-800 rounded-full"></span>
@@ -211,7 +260,7 @@ export default function Room() {
                     </div>
                   </div>
                   <div className="flex items-center space-x-1 text-gray-400">
-                    {(p.handRaised || (p.id === 'p1' && isHandRaised)) && <Hand className="w-4 h-4 text-yellow-500" />}
+                    {p.handRaised && <Hand className="w-4 h-4 text-yellow-500" />}
                     {p.isMuted ? <MicOff className="w-4 h-4 text-red-400" /> : <Mic className="w-4 h-4 text-green-400" />}
                   </div>
                 </div>
@@ -272,8 +321,6 @@ export default function Room() {
                   );
                 }
 
-                const isMentioned = msg.mentions?.includes('u1');
-
                 return (
                   <div key={msg.id} className="flex flex-col group">
                     <div className="flex items-baseline justify-between mb-1">
@@ -291,7 +338,7 @@ export default function Room() {
                       </button>
                     </div>
                     
-                    <div className={`rounded-lg rounded-tl-none p-3 text-sm ${isMentioned ? 'bg-blue-900/40 border border-blue-700/50 text-blue-100' : 'bg-gray-700 text-gray-200'}`}>
+                    <div className="rounded-lg rounded-tl-none p-3 text-sm bg-gray-700 text-gray-200">
                       {msg.replyToMessage && (
                         <div className="mb-2 pl-2 border-l-2 border-gray-500 text-xs text-gray-400 italic line-clamp-1">
                           {msg.replyToMessage}

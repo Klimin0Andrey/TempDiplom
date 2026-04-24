@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from dotenv import load_dotenv
 from database import engine, Base, get_db
-from routers import auth, rooms
+from routers import auth, rooms, websockets
 
 load_dotenv()
 
@@ -29,18 +29,17 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(rooms.router)
+app.include_router(websockets.router)
 
 
 @app.on_event("startup")
 async def startup():
-    """Create tables on startup (development only)."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
 
 @app.get("/api/health")
 async def health_check(db: AsyncSession = Depends(get_db)):
-    """Health check with database connectivity test."""
     try:
         await db.execute(text("SELECT 1"))
         return {"status": "ok", "database": "connected"}
