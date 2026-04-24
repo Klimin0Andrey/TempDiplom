@@ -7,7 +7,6 @@ import {
 const API_BASE_URL = '/api'; // Adjust based on environment (e.g., http://localhost:3000/api)
 
 class ApiError extends Error {
-
   constructor(public status: number, public data: any) {
     super(data?.error || 'API Error');
   }
@@ -66,6 +65,7 @@ export const api = {
     regenerateInvite: (id: string) => fetchApi<{success: boolean, inviteCode: string, inviteLink: string}>(`/rooms/${id}/regenerate-invite`, { method: 'POST' }),
   },
   protocols: {
+    list: () => fetchApi<ProtocolsListResponse>('/protocols', { method: 'GET' }),
     listByRoom: (roomId: string, params?: { limit?: number; offset?: number }) => {
       const query = new URLSearchParams(params as any).toString();
       return fetchApi<ProtocolsListResponse>(`/rooms/${roomId}/protocols${query ? `?${query}` : ''}`, { method: 'GET' });

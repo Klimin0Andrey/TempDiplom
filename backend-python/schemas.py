@@ -112,3 +112,47 @@ class RoomDetailResponse(BaseModel):
     room: RoomResponse
     participants: List = []
     protocols: List = []
+    
+# --- PROTOCOLS SCHEMAS ---
+
+class SaveProtocolRequest(BaseModel):
+    room_id: str
+    title: str
+    content_json: dict
+    summary_json: Optional[dict] = None
+    decisions_json: Optional[dict] = None
+    action_items_json: Optional[dict] = None
+    topics_json: Optional[dict] = None
+
+
+class ProtocolShortResponse(BaseModel):
+    id: str
+    room_id: str
+    room_name: str = ""
+    title: str
+    summary: str = ""
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProtocolResponse(BaseModel):
+    id: str
+    room_id: str
+    title: str
+    content_json: dict
+    summary_json: Optional[dict] = None
+    decisions_json: Optional[dict] = None
+    action_items_json: Optional[dict] = None
+    topics_json: Optional[dict] = None
+    pdf_url: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProtocolsListResponse(BaseModel):
+    success: bool = True
+    protocols: list[ProtocolShortResponse]
+    total: int

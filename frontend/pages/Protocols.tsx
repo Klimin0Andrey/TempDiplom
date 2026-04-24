@@ -1,22 +1,56 @@
-import React, { useState } from 'react';
-import { FileText, Download, Search, Calendar, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { FileText, Download, Search, Calendar, ChevronRight, Loader2, AlertCircle } from 'lucide-react';
 import Sidebar from '../components/Sidebar.tsx';
-import { ProtocolShortResponse } from '../types.ts';
+import { ProtocolShortResponse, ProtocolResponse } from '../types.ts';
 import ProtocolViewer from '../components/ProtocolViewer.tsx';
-
-const MOCK_PROTOCOLS: ProtocolShortResponse[] = [
-  { id: 'p1', roomId: 'r1', roomName: 'Project Alpha Kickoff', title: 'Alpha Kickoff Summary', summary: 'Discussed initial architecture and assigned tasks for the first sprint.', createdAt: '2024-05-15T14:30:00Z', pdfUrl: '#' },
-  { id: 'p2', roomId: 'r2', roomName: 'Weekly Sync', title: 'Weekly Sync - Week 20', summary: 'Reviewed progress on the signaling server. Blockers identified in WebRTC ICE candidate exchange.', createdAt: '2024-05-10T10:00:00Z', pdfUrl: '#' },
-  { id: 'p3', roomId: 'r3', roomName: 'Client Presentation', title: 'Q3 Results Protocol', summary: 'Presented Q3 results. Client requested additional features for the dashboard.', createdAt: '2024-04-28T16:00:00Z' },
-];
+import { api } from '../services/api.ts';
 
 export default function Protocols() {
   const [search, setSearch] = useState('');
-  const [selectedProtocol, setSelectedProtocol] = useState<ProtocolShortResponse | null>(null);
+  const [protocols, setProtocols] = useState<ProtocolShortResponse[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  const [selectedProtocolId, setSelectedProtocolId] = useState<string | null>(null);
+  const [fullProtocol, setFullProtocol] = useState<ProtocolResponse | null>(null);
+  const [isViewerLoading, setIsViewerLoading] = useState(false);
 
-  const filteredProtocols = MOCK_PROTOCOLS.filter(p => 
+  useEffect(() => {
+    fetchProtocols();
+  }, []);
+
+  const fetchProtocols = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const response = await api.protocols.list();
+      setProtocols(response.protocols || []);
+    } catch (err: any) {
+      console.error("Failed to fetch protocols:", err);
+      setError("Failed to load protocols. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleViewProtocol = async (id: string) => {
+    setSelectedProtocolId(id);
+    setIsViewerLoading(true);
+    try {
+      const data = await api.protocols.getById(id);
+      setFullProtocol(data);
+    } catch (err) {
+      console.error("Failed to fetch full protocol:", err);
+      alert("Failed to load protocol details.");
+      setSelectedProtocolId(null);
+    } finally {
+      setIsViewerLoading(false);
+    }
+  };
+
+  const filteredProtocols = protocols.filter(p => 
     p.title.toLowerCase().includes(search.toLowerCase()) || 
-    p.roomName.toLowerCase().includes(search.toLowerCase())
+    p.room_name.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -44,67 +78,81 @@ export default function Protocols() {
         </header>
 
         <main className="flex-1 overflow-y-auto p-8">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <ul className="divide-y divide-gray-200">
-              {filteredProtocols.map((protocol) => (
-                <li key={protocol.id} className="hover:bg-gray-50 transition-colors">
-                  <div className="px-6 py-5 flex items-center justify-between">
-                    <div className="flex items-start space-x-4 flex-1">
-                      <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 shrink-0">
-                        <FileText className="w-6 h-6 text-blue-600" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-1">
-                          <h3 className="text-lg font-bold text-gray-900 truncate">{protocol.title}</h3>
-                          <div className="flex items-center text-sm text-gray-500 shrink-0 ml-4">
-                            <Calendar className="w-4 h-4 mr-1.5" />
-                            {new Date(protocol.createdAt).toLocaleDateString()}
-                          </div>
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+              <Loader2 className="w-8 h-8 mb-4 text-blue-500 animate-spin" />
+              <p className="text-sm font-medium">Loading protocols...</p>
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center h-64 text-red-500">
+              <AlertCircle className="w-12 h-12 mb-4 text-red-300" />
+              <p className="text-lg font-medium text-red-900">{error}</p>
+              <button onClick={fetchProtocols} className="mt-4 px-4 py-2 bg-red-50 text-red-700 rounded-md hover:bg-red-100 transition-colors">Try Again</button>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <ul className="divide-y divide-gray-200">
+                {filteredProtocols.map((protocol) => (
+                  <li key={protocol.id} className="hover:bg-gray-50 transition-colors">
+                    <div className="px-6 py-5 flex items-center justify-between">
+                      <div className="flex items-start space-x-4 flex-1">
+                        <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 shrink-0">
+                          <FileText className="w-6 h-6 text-blue-600" />
                         </div>
-                        <p className="text-sm font-medium text-blue-600 mb-1">{protocol.roomName}</p>
-                        <p className="text-sm text-gray-600 line-clamp-2">{protocol.summary}</p>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <h3 className="text-lg font-bold text-gray-900 truncate">{protocol.title}</h3>
+                            <div className="flex items-center text-sm text-gray-500 shrink-0 ml-4">
+                              <Calendar className="w-4 h-4 mr-1.5" />
+                              {new Date(protocol.created_at).toLocaleDateString()}
+                            </div>
+                          </div>
+                          <p className="text-sm font-medium text-blue-600 mb-1">{protocol.room_name}</p>
+                          <p className="text-sm text-gray-600 line-clamp-2">{protocol.summary || 'No summary available.'}</p>
+                        </div>
+                      </div>
+                      <div className="ml-8 flex items-center space-x-3 shrink-0">
+                        {protocol.pdf_url && (
+                          <button className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Download PDF">
+                            <Download className="w-5 h-5" />
+                          </button>
+                        )}
+                        <button 
+                          onClick={() => handleViewProtocol(protocol.id)}
+                          disabled={isViewerLoading && selectedProtocolId === protocol.id}
+                          className="flex items-center space-x-1 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm disabled:opacity-50"
+                        >
+                          {isViewerLoading && selectedProtocolId === protocol.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <>
+                              <span>View</span>
+                              <ChevronRight className="w-4 h-4" />
+                            </>
+                          )}
+                        </button>
                       </div>
                     </div>
-                    <div className="ml-8 flex items-center space-x-3 shrink-0">
-                      {protocol.pdfUrl && (
-                        <button className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Download PDF">
-                          <Download className="w-5 h-5" />
-                        </button>
-                      )}
-                      <button 
-                        onClick={() => setSelectedProtocol(protocol)}
-                        className="flex items-center space-x-1 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
-                      >
-                        <span>View</span>
-                        <ChevronRight className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                </li>
-              ))}
-              {filteredProtocols.length === 0 && (
-                <li className="px-6 py-12 text-center text-gray-500">
-                  No protocols found matching your search.
-                </li>
-              )}
-            </ul>
-          </div>
+                  </li>
+                ))}
+                {filteredProtocols.length === 0 && (
+                  <li className="px-6 py-12 text-center text-gray-500">
+                    No protocols found. Create a room and generate a protocol to see it here.
+                  </li>
+                )}
+              </ul>
+            </div>
+          )}
         </main>
       </div>
 
-      {/* Mocking the full protocol data for the viewer based on the short response */}
       <ProtocolViewer 
-        isOpen={!!selectedProtocol} 
-        onClose={() => setSelectedProtocol(null)} 
-        protocol={selectedProtocol ? {
-          id: selectedProtocol.id,
-          roomId: selectedProtocol.roomId,
-          title: selectedProtocol.title,
-          createdAt: selectedProtocol.createdAt,
-          pdfUrl: selectedProtocol.pdfUrl,
-          summaryJson: { summary: selectedProtocol.summary, topics: ['General'] },
-          updatedAt: selectedProtocol.createdAt
-        } : null} 
+        isOpen={!!fullProtocol} 
+        onClose={() => {
+          setFullProtocol(null);
+          setSelectedProtocolId(null);
+        }} 
+        protocol={fullProtocol} 
       />
     </div>
   );

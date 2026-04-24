@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from dotenv import load_dotenv
 from database import engine, Base, get_db
-from routers import auth, rooms, websockets
+from routers import auth, rooms, websockets, protocols
 
 load_dotenv()
 
@@ -30,6 +30,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(rooms.router)
 app.include_router(websockets.router)
+app.include_router(protocols.router)
 
 
 @app.on_event("startup")

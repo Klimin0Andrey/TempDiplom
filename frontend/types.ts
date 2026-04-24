@@ -87,12 +87,12 @@ export interface ActionItem {
 
 export interface ProtocolShortResponse {
   id: string;
-  roomId: string;
-  roomName: string;
+  room_id: string;
+  room_name: string;
   title: string;
   summary: string;
-  createdAt: string;
-  pdfUrl?: string;
+  created_at: string;
+  pdf_url?: string;
 }
 
 // Добавить в types.ts перед или после ProtocolResponse:
@@ -120,25 +120,25 @@ export interface Protocol {
 
 export interface ProtocolResponse {
   id: string;
-  roomId: string;
+  room_id: string;
   title: string;
-  contentJson?: any;
-  summaryJson?: {
+  content_json?: any;
+  summary_json?: {
     summary: string;
     topics: string[];
   };
-  decisionsJson?: {
+  decisions_json?: {
     decisions: string[];
   };
-  actionItemsJson?: {
+  action_items_json?: {
     action_items: ActionItem[];
   };
-  topicsJson?: {
+  topics_json?: {
     topics: string[];
   };
-  pdfUrl?: string;
-  createdAt: string;
-  updatedAt: string;
+  pdf_url?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Participant {

@@ -1,9 +1,9 @@
 import React from 'react';
 import { X, Download, FileText, CheckCircle2, Clock, Tag } from 'lucide-react';
-import { Protocol } from '../types.ts';
+import { ProtocolResponse } from '../types.ts';
 
 interface ProtocolViewerProps {
-  protocol: Protocol | null;
+  protocol: ProtocolResponse | null;
   isOpen: boolean;
   onClose: () => void;
 }
@@ -24,14 +24,14 @@ export default function ProtocolViewer({ protocol, isOpen, onClose }: ProtocolVi
             <div>
               <h2 className="text-lg font-bold text-gray-900">{protocol.title}</h2>
               <p className="text-xs text-gray-500">
-                Generated on {new Date(protocol.createdAt).toLocaleString()}
+                Generated on {new Date(protocol.created_at).toLocaleString()}
               </p>
             </div>
           </div>
           <div className="flex items-center space-x-2">
-            {protocol.pdfUrl && (
+            {protocol.pdf_url && (
               <a 
-                href={protocol.pdfUrl}
+                href={protocol.pdf_url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center space-x-2 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-md text-sm font-medium transition-colors"
@@ -51,23 +51,23 @@ export default function ProtocolViewer({ protocol, isOpen, onClose }: ProtocolVi
           <div className="space-y-8 max-w-3xl mx-auto">
             
             {/* Summary Section */}
-            {protocol.summaryJson && (
+            {protocol.summary_json && (
               <section className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
                 <h3 className="text-md font-bold text-gray-900 mb-3 flex items-center">
                   <FileText className="w-4 h-4 mr-2 text-blue-500" />
                   Executive Summary
                 </h3>
                 <p className="text-gray-700 text-sm leading-relaxed">
-                  {protocol.summaryJson.summary}
+                  {protocol.summary_json.summary}
                 </p>
                 
-                {protocol.summaryJson.topics && protocol.summaryJson.topics.length > 0 && (
+                {protocol.summary_json.topics && protocol.summary_json.topics.length > 0 && (
                   <div className="mt-4 pt-4 border-t border-gray-100">
                     <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 flex items-center">
                       <Tag className="w-3 h-3 mr-1" /> Topics Discussed
                     </h4>
                     <div className="flex flex-wrap gap-2">
-                      {protocol.summaryJson.topics.map((topic, idx) => (
+                      {protocol.summary_json.topics.map((topic, idx) => (
                         <span key={idx} className="px-2.5 py-1 bg-gray-100 text-gray-700 text-xs rounded-md border border-gray-200">
                           {topic}
                         </span>
@@ -79,14 +79,14 @@ export default function ProtocolViewer({ protocol, isOpen, onClose }: ProtocolVi
             )}
 
             {/* Decisions Section */}
-            {protocol.decisionsJson && protocol.decisionsJson.decisions.length > 0 && (
+            {protocol.decisions_json && protocol.decisions_json.decisions && protocol.decisions_json.decisions.length > 0 && (
               <section className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
                 <h3 className="text-md font-bold text-gray-900 mb-4 flex items-center">
                   <CheckCircle2 className="w-4 h-4 mr-2 text-green-500" />
                   Key Decisions
                 </h3>
                 <ul className="space-y-3">
-                  {protocol.decisionsJson.decisions.map((decision, idx) => (
+                  {protocol.decisions_json.decisions.map((decision, idx) => (
                     <li key={idx} className="flex items-start">
                       <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-green-500 mt-2 mr-3"></span>
                       <span className="text-sm text-gray-700">{decision}</span>
@@ -97,7 +97,7 @@ export default function ProtocolViewer({ protocol, isOpen, onClose }: ProtocolVi
             )}
 
             {/* Action Items Section */}
-            {protocol.actionItemsJson && protocol.actionItemsJson.action_items.length > 0 && (
+            {protocol.action_items_json && protocol.action_items_json.action_items && protocol.action_items_json.action_items.length > 0 && (
               <section className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
                 <h3 className="text-md font-bold text-gray-900 mb-4 flex items-center">
                   <Clock className="w-4 h-4 mr-2 text-orange-500" />
@@ -114,29 +114,40 @@ export default function ProtocolViewer({ protocol, isOpen, onClose }: ProtocolVi
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {protocol.actionItemsJson.action_items.map((item) => (
-                        <tr key={item.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-3 py-3 text-sm text-gray-900 font-medium">{item.task}</td>
-                          <td className="px-3 py-3 text-sm text-gray-600">
-                            <div className="flex items-center space-x-2">
-                              <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold">
-                                {item.assignee.charAt(0)}
+                      {protocol.action_items_json.action_items.map((item, idx) => {
+                        // Защита от криво сгенерированного ИИ JSON'а
+                        const status = item.status || 'pending';
+                        const assignee = item.assignee || 'Unassigned';
+                        const initial = item.assignee ? String(item.assignee).charAt(0).toUpperCase() : '?';
+                        
+                        return (
+                          <tr key={item.id || `action-item-${idx}`} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-3 py-3 text-sm text-gray-900 font-medium">
+                              {item.task || 'Untitled Task'}
+                            </td>
+                            <td className="px-3 py-3 text-sm text-gray-600">
+                              <div className="flex items-center space-x-2">
+                                <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold">
+                                  {initial}
+                                </div>
+                                <span>{assignee}</span>
                               </div>
-                              <span>{item.assignee}</span>
-                            </div>
-                          </td>
-                          <td className="px-3 py-3 text-sm text-gray-600">{item.deadline}</td>
-                          <td className="px-3 py-3 text-sm">
-                            <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                              item.status === 'completed' ? 'bg-green-100 text-green-800' :
-                              item.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
-                              'bg-yellow-100 text-yellow-800'
-                            }`}>
-                              {item.status.replace('_', ' ')}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                            </td>
+                            <td className="px-3 py-3 text-sm text-gray-600">
+                              {item.deadline || 'No deadline'}
+                            </td>
+                            <td className="px-3 py-3 text-sm">
+                              <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                status === 'completed' ? 'bg-green-100 text-green-800' :
+                                status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
+                                'bg-yellow-100 text-yellow-800'
+                              }`}>
+                                {status.replace('_', ' ')}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
