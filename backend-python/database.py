@@ -14,11 +14,14 @@ DATABASE_URL = os.getenv(
 engine = create_async_engine(
     DATABASE_URL, 
     echo=True,
+    pool_size=5,
+    max_overflow=10,
+    pool_pre_ping=True,
+    pool_recycle=3600,
     connect_args={
         "ssl": "require"
     }
 )
-
 AsyncSessionLocal = async_sessionmaker(
     engine, 
     class_=AsyncSession, 

@@ -1,9 +1,10 @@
 from fastapi import FastAPI, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from dotenv import load_dotenv
 from database import engine, Base, get_db
-import models
+from routers import auth
 
 load_dotenv()
 
@@ -13,17 +14,35 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# CORS — разрешаем запросы с React
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Подключаем роутеры
+app.include_router(auth.router)
+
+
 @app.on_event("startup")
 async def startup():
-    # При запуске создаем все таблицы в БД (для разработки)
-    # В production лучше использовать Alembic миграции
+    """Create tables on startup (development only)."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+
 @app.get("/api/health")
 async def health_check(db: AsyncSession = Depends(get_db)):
+    """Health check with database connectivity test."""
     try:
-        # Проверяем подключение к БД
         await db.execute(text("SELECT 1"))
         return {"status": "ok", "database": "connected"}
     except Exception as e:
