@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Mic, Lock, Mail, User, UserPlus, LogIn, Building2 } from 'lucide-react';
+import { api } from '../services/api.ts';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -21,13 +22,34 @@ export default function Login() {
     }
   }, [location]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+ const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  
+  try {
+    if (isLogin) {
+      const response = await api.auth.login({ email, password });
+      localStorage.setItem('accessToken', response.accessToken);
+      localStorage.setItem('refreshToken', response.refreshToken);
+    } else {
+      await api.auth.register({
+        email,
+        password,
+        first_name: firstName,
+        last_name: lastName,
+        org_name: orgName,
+      });
+      // После регистрации — логинимся сразу
+      const loginResponse = await api.auth.login({ email, password });
+      localStorage.setItem('accessToken', loginResponse.accessToken);
+      localStorage.setItem('refreshToken', loginResponse.refreshToken);
+    }
     
-    // Mock setting token
-    localStorage.setItem('accessToken', 'mock_jwt_token');
     navigate('/dashboard');
-  };
+  } catch (err: any) {
+    console.error('Auth error:', err);
+    alert(err.message || 'Authentication failed');
+  }
+};
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 py-12 px-4 sm:px-6 lg:px-8">

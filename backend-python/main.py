@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from dotenv import load_dotenv
 from database import engine, Base, get_db
-from routers import auth
+from routers import auth, rooms
 
 load_dotenv()
 
@@ -14,7 +14,6 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS — разрешаем запросы с React
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -28,8 +27,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Подключаем роутеры
 app.include_router(auth.router)
+app.include_router(rooms.router)
 
 
 @app.on_event("startup")

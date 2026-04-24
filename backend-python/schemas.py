@@ -2,6 +2,7 @@ from pydantic import BaseModel, EmailStr, field_validator, ConfigDict
 from typing import Optional
 from uuid import UUID
 from datetime import datetime
+from typing import List
 
 # Предполагается, что эти импорты у вас есть
 from models import RoleEnum, StatusEnum 
@@ -55,3 +56,59 @@ class TokenResponse(BaseModel):
     accessToken: str
     refreshToken: str
     user: UserResponse
+    
+# --- ROOMS SCHEMAS ---
+
+class CreateRoomRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    scheduled_start_at: Optional[datetime] = None
+    max_participants: Optional[int] = 50
+
+    @field_validator("name")
+    @classmethod
+    def name_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Room name is required")
+        return v.strip()
+
+
+class UpdateRoomRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    scheduled_start_at: Optional[datetime] = None
+
+
+class RoomResponse(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+    invite_code: str
+    invite_link: str = ""
+    status: str  # RoomStatusEnum -> str
+    creator_id: str
+    creator_name: str = ""
+    scheduled_start_at: Optional[datetime] = None
+    participants_count: int = 0
+    max_participants: Optional[int] = None
+    is_recording: bool = False
+    chat_enabled: bool = True
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RoomsListResponse(BaseModel):
+    success: bool = True
+    rooms: List[RoomResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class RoomDetailResponse(BaseModel):
+    success: bool = True
+    room: RoomResponse
+    participants: List = []
+    protocols: List = []
