@@ -348,9 +348,9 @@ export default function Room() {
                     </div>
                     
                     <div className="rounded-lg rounded-tl-none p-3 text-sm bg-gray-700 text-gray-200">
-                      {msg.replyToMessage && (
+                      {msg.replyToId && (
                         <div className="mb-2 pl-2 border-l-2 border-gray-500 text-xs text-gray-400 italic line-clamp-1">
-                          {msg.replyToMessage}
+                          {messages.find(m => m.id === msg.replyToId)?.message || 'Reply to a message'}
                         </div>
                       )}
                       {msg.message}
