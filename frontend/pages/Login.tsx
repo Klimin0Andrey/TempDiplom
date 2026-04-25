@@ -26,23 +26,22 @@ export default function Login() {
   e.preventDefault();
   
   try {
+    let response;
     if (isLogin) {
-      const response = await api.auth.login({ email, password });
-      localStorage.setItem('accessToken', response.accessToken);
-      localStorage.setItem('refreshToken', response.refreshToken);
+      response = await api.auth.login({ email, password });
     } else {
       await api.auth.register({
-        email,
-        password,
+        email, password,
         first_name: firstName,
         last_name: lastName,
         org_name: orgName,
       });
-      // После регистрации — логинимся сразу
-      const loginResponse = await api.auth.login({ email, password });
-      localStorage.setItem('accessToken', loginResponse.accessToken);
-      localStorage.setItem('refreshToken', loginResponse.refreshToken);
+      response = await api.auth.login({ email, password });
     }
+
+    localStorage.setItem('accessToken', response.accessToken);
+    localStorage.setItem('refreshToken', response.refreshToken);
+    localStorage.setItem('user', JSON.stringify(response.user));
     
     navigate('/dashboard');
   } catch (err: any) {

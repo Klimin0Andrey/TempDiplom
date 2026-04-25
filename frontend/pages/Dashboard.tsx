@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Users, Clock, PlayCircle, Archive, Loader2, AlertCircle } from 'lucide-react';
+import { Plus, Users, Clock, PlayCircle, Archive, Loader2, AlertCircle, MoreVertical, Edit, Copy, Trash2, ArchiveIcon } from 'lucide-react';
 import { RoomResponse, RoomStatus } from '../types.ts';
-import CreateRoomModal from '../components/CreateRoomModal.tsx';
+import RoomModal from '../components/RoomModal.tsx';
 import Sidebar from '../components/Sidebar.tsx';
 import { api } from '../services/api.ts';
 
@@ -13,59 +13,106 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [filter, setFilter] = useState<'all' | RoomStatus>('all');
+  
+  const [editingRoom, setEditingRoom] = useState<RoomResponse | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [showCopyToast, setShowCopyToast] = useState(false);
 
-const fetchRooms = async () => {
-  try {
-    setIsLoading(true);
-    setError(null);
-    const params: any = { limit: 20, offset: 0 };
-    if (filter !== 'all') {
-      params.status = filter;
+  const fetchRooms = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const params: any = { limit: 20, offset: 0 };
+      if (filter !== 'all') {
+        params.status = filter;
+      }
+      const response = await api.rooms.list(params);
+      setRooms(response.rooms || []);
+    } catch (err: any) {
+      console.error("Failed to fetch rooms:", err);
+      if (err.status === 401) {
+        navigate('/login');
+      } else {
+        setError("Failed to load conferences. Please try again.");
+      }
+    } finally {
+      setIsLoading(false);
     }
-    const response = await api.rooms.list(params);
-    setRooms(response.rooms || []);
-  } catch (err: any) {
-    console.error("Failed to fetch rooms:", err);
-    if (err.status === 401) {
-      navigate('/login');
-    } else {
-      setError("Failed to load conferences. Please try again.");
-    }
-  } finally {
-    setIsLoading(false);
-  }
-};
+  };
 
   useEffect(() => {
     fetchRooms();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter]);
 
   const handleJoinRoom = (roomId: string) => {
     navigate(`/room/${roomId}`);
   };
 
-const handleCreateRoom = async (data: { name: string; description: string; scheduledStartAt: string; maxParticipants: number }) => {
-  try {
-    await api.rooms.create({
-      name: data.name,
-      description: data.description,
-      scheduledStartAt: data.scheduledStartAt ? new Date(data.scheduledStartAt).toISOString() : undefined,
-      maxParticipants: data.maxParticipants
+  const handleCreateRoom = async (data: { name: string; description: string; scheduledStartAt: string; maxParticipants: number }) => {
+    try {
+      await api.rooms.create({
+        name: data.name,
+        description: data.description,
+        scheduledStartAt: data.scheduledStartAt ? new Date(data.scheduledStartAt).toISOString() : undefined,
+        maxParticipants: data.maxParticipants
+      });
+      setIsCreateModalOpen(false);
+      fetchRooms();
+    } catch (err: any) {
+      console.error("Failed to create room:", err);
+      alert("Failed to create room: " + (err.message || "Unknown error"));
+    }
+  };
+
+  const handleEditRoom = async (data: { name: string; description: string; scheduledStartAt: string; maxParticipants: number }) => {
+    if (!editingRoom) return;
+    try {
+      await api.rooms.update(editingRoom.id, {
+        name: data.name,
+        description: data.description,
+        scheduledStartAt: data.scheduledStartAt ? new Date(data.scheduledStartAt).toISOString() : undefined,
+      });
+      setEditingRoom(null);
+      fetchRooms();
+    } catch (err: any) {
+      console.error("Failed to update room:", err);
+      alert("Failed to update room: " + (err.message || "Unknown error"));
+    }
+  };
+
+  const handleArchiveRoom = async (roomId: string) => {
+    if (!confirm('Archive this room?')) return;
+    try {
+      await api.rooms.archive(roomId);
+      fetchRooms();
+    } catch (err: any) {
+      alert("Failed to archive: " + (err.message || "Unknown error"));
+    }
+  };
+
+  const handleDeleteRoom = async (roomId: string) => {
+    if (!confirm('Permanently delete this room? This cannot be undone.')) return;
+    try {
+      await api.rooms.delete(roomId);
+      fetchRooms();
+    } catch (err: any) {
+      alert("Failed to delete: " + (err.message || "Unknown error"));
+    }
+  };
+
+  const handleCopyInviteLink = (room: RoomResponse) => {
+    const link = `${window.location.origin}/#/join/${room.invite_code}`;
+    navigator.clipboard.writeText(link).then(() => {
+      setShowCopyToast(true);
+      setOpenMenuId(null);
+      setTimeout(() => setShowCopyToast(false), 3000);
     });
-    
-    fetchRooms();
-  } catch (err: any) {
-    console.error("Failed to create room:", err);
-    alert("Failed to create room: " + (err.message || "Unknown error"));
-  }
-};
+  };
 
   return (
     <div className="flex h-screen bg-gray-50">
       <Sidebar />
 
-      {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="bg-white border-b border-gray-200 px-8 py-6 flex justify-between items-center shrink-0">
           <div>
@@ -108,18 +155,72 @@ const handleCreateRoom = async (data: { name: string; description: string; sched
             </div>
           ) : (
             <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-              {rooms.map((room) => (
-                <div key={room.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-all flex flex-col group">
+              {rooms.map((room) => {
+                const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+                const canManage = room.creator_id === currentUser.id || 
+                                  currentUser.role === 'owner' || 
+                                  currentUser.role === 'admin';
+
+                return (
+                <div key={room.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-all flex flex-col group relative">
                   <div className="flex justify-between items-start mb-4">
                     <h3 className="font-bold text-lg text-gray-900 line-clamp-1 group-hover:text-blue-600 transition-colors">{room.name}</h3>
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                      room.status === RoomStatus.ACTIVE ? 'bg-green-100 text-green-800 border border-green-200' :
-                      room.status === RoomStatus.SCHEDULED ? 'bg-blue-100 text-blue-800 border border-blue-200' :
-                      room.status === RoomStatus.ARCHIVED ? 'bg-gray-100 text-gray-600 border border-gray-200' :
-                      'bg-gray-100 text-gray-800 border border-gray-200'
-                    }`}>
-                      {room.status}
-                    </span>
+                    <div className="flex items-center space-x-2">
+                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                        room.status === RoomStatus.ACTIVE ? 'bg-green-100 text-green-800 border border-green-200' :
+                        room.status === RoomStatus.SCHEDULED ? 'bg-blue-100 text-blue-800 border border-blue-200' :
+                        room.status === RoomStatus.ARCHIVED ? 'bg-gray-100 text-gray-600 border border-gray-200' :
+                        'bg-gray-100 text-gray-800 border border-gray-200'
+                      }`}>
+                        {room.status}
+                      </span>
+                      
+                      {canManage && (
+                        <div className="relative">
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === room.id ? null : room.id); }}
+                            className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                          >
+                            <MoreVertical className="w-4 h-4" />
+                          </button>
+                          
+                          {openMenuId === room.id && (
+                            <>
+                              <div 
+                                className="fixed inset-0 z-40" 
+                                onClick={(e) => { e.stopPropagation(); setOpenMenuId(null); }}
+                              />
+                              <div className="absolute right-0 top-8 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                                <button
+                                  onClick={() => { setEditingRoom(room); setOpenMenuId(null); }}
+                                  className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                >
+                                  <Edit className="w-4 h-4" /> <span>Edit</span>
+                                </button>
+                                <button
+                                  onClick={() => handleCopyInviteLink(room)}
+                                  className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                >
+                                  <Copy className="w-4 h-4" /> <span>Copy Invite Link</span>
+                                </button>
+                                <button
+                                  onClick={() => { handleArchiveRoom(room.id); setOpenMenuId(null); }}
+                                  className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                >
+                                  <ArchiveIcon className="w-4 h-4" /> <span>Archive</span>
+                                </button>
+                                <button
+                                  onClick={() => { handleDeleteRoom(room.id); setOpenMenuId(null); }}
+                                  className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                                >
+                                  <Trash2 className="w-4 h-4" /> <span>Delete</span>
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <p className="text-gray-500 text-sm mb-6 flex-1 line-clamp-2">{room.description || 'No description provided.'}</p>
                   
@@ -143,17 +244,28 @@ const handleCreateRoom = async (data: { name: string; description: string; sched
                     </button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </main>
       </div>
-
-      <CreateRoomModal 
-        isOpen={isCreateModalOpen} 
-        onClose={() => setIsCreateModalOpen(false)} 
-        onSubmit={handleCreateRoom} 
+      
+      <RoomModal 
+        isOpen={isCreateModalOpen || !!editingRoom} 
+        onClose={() => { setIsCreateModalOpen(false); setEditingRoom(null); }}
+        onSubmit={editingRoom ? handleEditRoom : handleCreateRoom}
+        room={editingRoom}
       />
+
+      {showCopyToast && (
+        <div className="fixed bottom-8 right-8 flex items-center space-x-3 bg-gray-900 text-white px-6 py-4 rounded-2xl shadow-2xl z-[100]">
+          <div className="bg-green-500 p-1 rounded-full">
+            <Copy className="w-4 h-4 text-white" />
+          </div>
+          <span className="font-medium text-sm">Invite link copied to clipboard!</span>
+        </div>
+      )}
     </div>
   );
 }

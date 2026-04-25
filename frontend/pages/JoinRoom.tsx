@@ -1,0 +1,67 @@
+import React, { useEffect, useState } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { Loader2, AlertCircle } from 'lucide-react';
+import { api } from '../services/api.ts';
+
+export default function JoinRoom() {
+  const { inviteCode } = useParams();
+  const navigate = useNavigate();
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const resolveInvite = async () => {
+      const token = localStorage.getItem('accessToken');
+      
+      if (!token) {
+        // Если нет токена, запоминаем ссылку и отправляем на логин
+        // После входа мы сможем вернуть пользователя сюда
+        navigate('/login', { state: { returnTo: `/join/${inviteCode}` } });
+        return;
+      }
+
+      try {
+        // Ищем комнату по коду приглашения
+        const response = await api.rooms.list(); 
+        const room = response.rooms.find(r => r.invite_code === inviteCode);
+        
+        if (room) {
+          // Если нашли — летим в комнату
+          navigate(`/room/${room.id}`);
+        } else {
+          setError("Invalid or expired invite link. Please check the code.");
+        }
+      } catch (err: any) {
+        console.error("Join error:", err);
+        setError("Unable to connect to the server. Please try again later.");
+      }
+    };
+
+    if (inviteCode) {
+      resolveInvite();
+    }
+  }, [inviteCode, navigate]);
+
+  return (
+    <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-50 p-4 text-center">
+      {!error ? (
+        <div className="animate-in fade-in duration-500">
+          <Loader2 className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-gray-900">Joining Meeting...</h2>
+          <p className="text-gray-500 mt-2">Connecting to conference, please wait.</p>
+        </div>
+      ) : (
+        <div className="bg-white p-8 rounded-2xl shadow-xl border border-gray-200 max-w-md w-full animate-in zoom-in duration-300">
+          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900">Oops!</h2>
+          <p className="text-gray-600 mt-4">{error}</p>
+          <button 
+            onClick={() => navigate('/dashboard')} 
+            className="mt-6 w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-colors"
+          >
+            Back to Dashboard
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

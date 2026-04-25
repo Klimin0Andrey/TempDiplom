@@ -107,7 +107,14 @@ class Room(Base):
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
 
     creator = relationship("User", back_populates="rooms_created")
-    participants = relationship("Participant", back_populates="room")
+    
+    # ИСПРАВЛЕНИЕ: Добавляем cascade="all, delete-orphan"
+    participants = relationship(
+        "Participant", 
+        back_populates="room", 
+        cascade="all, delete-orphan" 
+    )
+    
 
 class Participant(Base):
     __tablename__ = 'participants'
