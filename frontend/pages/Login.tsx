@@ -43,7 +43,21 @@ export default function Login() {
     localStorage.setItem('refreshToken', response.refreshToken);
     localStorage.setItem('user', JSON.stringify(response.user));
     
-    navigate('/dashboard');
+    // Приоритет:
+    // 1. location.state.returnTo (из navigate с state)
+    // 2. location.state.from (из ProtectedRoute)
+    // 3. sessionStorage.redirectAfterLogin (на случай перезагрузки)
+    // 4. /dashboard (дефолт)
+    const destination = 
+      location.state?.returnTo || 
+      location.state?.from || 
+      sessionStorage.getItem('redirectAfterLogin') || 
+      '/dashboard';
+    
+    // Очищаем sessionStorage
+    sessionStorage.removeItem('redirectAfterLogin');
+    
+    navigate(destination, { replace: true });
   } catch (err: any) {
     console.error('Auth error:', err);
     alert(err.message || 'Authentication failed');
@@ -147,6 +161,18 @@ export default function Login() {
               />
             </div>
           </div>
+
+          {isLogin && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => navigate('/forgot-password')}
+                className="text-xs font-medium text-blue-600 hover:text-blue-500 transition-colors"
+              >
+                Forgot password?
+              </button>
+            </div>
+          )}
 
           <button
             type="submit"

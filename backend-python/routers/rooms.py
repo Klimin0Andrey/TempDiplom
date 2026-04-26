@@ -7,6 +7,8 @@ import models
 import schemas
 from dependencies import get_current_active_user, RequireRole
 from models import RoomStatusEnum, RoleEnum
+from fastapi import BackgroundTasks
+from services.email import send_room_invite_email
 
 router = APIRouter(prefix="/api/rooms", tags=["Rooms"])
 
@@ -263,6 +265,41 @@ async def get_chat_history(
 
     return {"success": True, "messages": messages}
 
+
+@router.post("/{room_id}/invite")
+async def invite_to_room_by_email(
+    room_id: str,
+    request: dict,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user)
+):
+    email = request.get("email")
+    if not email: raise HTTPException(status_code=400, detail="Email required")
+
+    # ИСПРАВЛЕНО: Достаем комнату и организацию одним запросом
+    result = await db.execute(
+        select(models.Room, models.Organization.name)
+        .join(models.Organization, models.Room.organization_id == models.Organization.id)
+        .where(models.Room.id == room_id)
+    )
+    row = result.first()
+    if not row: raise HTTPException(status_code=404, detail="Room not found")
+    
+    room, org_name = row
+    inviter = f"{current_user.first_name} {current_user.last_name or ''}".strip()
+
+    # Передаем org_name последним аргументом
+    background_tasks.add_task(
+        send_room_invite_email, 
+        email, 
+        room.name, 
+        room.invite_code, 
+        inviter,
+        org_name
+    )
+    
+    return {"success": True, "message": f"Invite sent to {email}"}
 
 # 5. ОБНОВЛЕНИЕ
 @router.put("/{room_id}", response_model=schemas.RoomResponse)

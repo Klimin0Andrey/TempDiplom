@@ -8,6 +8,8 @@ import Settings from './pages/Settings.tsx';
 import Protocols from './pages/Protocols.tsx';
 import Team from './pages/Team.tsx';
 import JoinRoom from './pages/JoinRoom.tsx';
+import ForgotPassword from './pages/ForgotPassword.tsx';
+import SetupPassword from './pages/SetupPassword.tsx';
 
 export default function App() {
   return (
@@ -21,6 +23,13 @@ export default function App() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/room/:roomId" element={<Room />} />
         <Route path="/join/:inviteCode" element={<JoinRoom />} />
+        
+        {/* НОВЫЕ РОУТЫ */}
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/setup-password" element={<SetupPassword />} />
+        <Route path="/reset-password" element={<SetupPassword />} /> 
+
+        {/* ЭТОТ РОУТ ВСЕГДА В САМОМ КОНЦЕ */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </HashRouter>

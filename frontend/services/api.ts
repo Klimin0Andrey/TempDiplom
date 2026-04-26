@@ -1,15 +1,14 @@
 import { 
   LoginResponse, RegisterResponse, UserResponse, 
   RoomsListResponse, RoomResponse, RoomDetailResponse,
-  ProtocolsListResponse, ProtocolResponse
+  ProtocolsListResponse, ProtocolResponse, GenericResponse
 } from '../types.ts';
 
-const API_BASE_URL = '/api'; // Adjust based on environment (e.g., http://localhost:3000/api)
+const API_BASE_URL = '/api';
 
 class ApiError extends Error {
-
   constructor(public status: number, public data: any) {
-    super(data?.error || 'API Error');
+    super(data?.detail || data?.error || 'API Error');
   }
 }
 
@@ -39,10 +38,7 @@ async function fetchApi<T>(endpoint: string, options: RequestInit = {}): Promise
     throw new ApiError(response.status, errorData);
   }
 
-  if (response.status === 204) {
-    return {} as T;
-  }
-
+  if (response.status === 204) return {} as T;
   return response.json();
 }
 
@@ -55,6 +51,8 @@ export const api = {
     getUsers: () => fetchApi<UserResponse[]>('/auth/users', { method: 'GET' }),
     updateUser: (id: string, data: any) => fetchApi<UserResponse>(`/auth/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     invite: (data: any) => fetchApi<UserResponse>('/auth/invite', { method: 'POST', body: JSON.stringify(data) }),
+    forgotPassword: (email: string) => fetchApi<GenericResponse>('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
+    resetPasswordConfirm: (data: any) => fetchApi<GenericResponse>('/auth/reset-password-confirm', { method: 'POST', body: JSON.stringify(data) }),
   },
   rooms: {
     list: (params?: { status?: string; limit?: number; offset?: number }) => {
@@ -65,17 +63,15 @@ export const api = {
     getById: (id: string) => fetchApi<RoomDetailResponse>(`/rooms/${id}`, { method: 'GET' }),
     update: (id: string, data: any) => fetchApi<RoomResponse>(`/rooms/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) => fetchApi<void>(`/rooms/${id}`, { method: 'DELETE' }),
-    archive: (id: string) => fetchApi<{success: boolean, message: string}>(`/rooms/${id}/archive`, { method: 'PATCH' }),
-    regenerateInvite: (id: string) => fetchApi<{success: boolean, inviteCode: string, inviteLink: string}>(`/rooms/${id}/regenerate-invite`, { method: 'POST' }),
+    archive: (id: string) => fetchApi<GenericResponse>(`/rooms/${id}/archive`, { method: 'PATCH' }),
+    regenerateInvite: (id: string) => fetchApi<{success: boolean, invite_code: string}>(`/rooms/${id}/regenerate-invite`, { method: 'POST' }),
+    // Метод для приглашения по email прямо в комнату
+    inviteByEmail: (roomId: string, email: string) => fetchApi<GenericResponse>(`/rooms/${roomId}/invite`, { method: 'POST', body: JSON.stringify({ email }) }),
   },
   protocols: {
     list: () => fetchApi<ProtocolsListResponse>('/protocols', { method: 'GET' }),
-    listByRoom: (roomId: string, params?: { limit?: number; offset?: number }) => {
-      const query = new URLSearchParams(params as any).toString();
-      return fetchApi<ProtocolsListResponse>(`/rooms/${roomId}/protocols${query ? `?${query}` : ''}`, { method: 'GET' });
-    },
+    listByRoom: (roomId: string) => fetchApi<ProtocolsListResponse>(`/rooms/${roomId}/protocols`, { method: 'GET' }),
     getById: (id: string) => fetchApi<ProtocolResponse>(`/protocols/${id}`, { method: 'GET' }),
     delete: (id: string) => fetchApi<void>(`/protocols/${id}`, { method: 'DELETE' }),
-    getDownloadUrl: (id: string) => fetchApi<{success: boolean, pdfUrl: string}>(`/protocols/${id}/download`, { method: 'GET' }),
   }
 };

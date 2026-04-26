@@ -13,6 +13,16 @@ export default function Sidebar() {
     { path: '/settings', icon: SettingsIcon, label: 'Settings' },
   ];
 
+  const handleSignOut = () => {
+    // Очищаем всё: токены и объект пользователя
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('user');
+    
+    // Переходим на логин с заменой истории (чтобы нельзя было вернуться назад)
+    navigate('/login', { replace: true });
+  };
+
   return (
     <div className="w-64 bg-white border-r border-gray-200 flex flex-col shrink-0">
       <div className="p-6 flex items-center space-x-3 border-b border-gray-100">
@@ -54,7 +64,7 @@ export default function Sidebar() {
           </div>
         </div>
         <button 
-          onClick={() => navigate('/login')}
+          onClick={handleSignOut}
           className="flex items-center justify-center space-x-2 w-full px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg font-medium transition-colors border border-transparent hover:border-red-100"
         >
           <LogOut className="w-4 h-4" />

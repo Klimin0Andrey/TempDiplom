@@ -5,6 +5,9 @@ from sqlalchemy import select
 import uuid
 
 
+
+from fastapi import BackgroundTasks
+from services.email import send_invite_email, send_reset_password_email
 from database import get_db
 from models import User, Organization, RoleEnum, StatusEnum
 from schemas import RegisterRequest, LoginRequest, TokenResponse, UserResponse, UserInviteRequest, UserUpdateRequest
@@ -123,12 +126,11 @@ async def get_organization_users(
 
 @router.post("/invite", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def invite_user(
-    request: UserInviteRequest, # Используем схему
+    request: UserInviteRequest,
+    background_tasks: BackgroundTasks, # Добавлено
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Invite a new user to the current user's organization."""
-    # Только Owner и Admin могут приглашать
     if current_user.role not in [RoleEnum.owner, RoleEnum.admin]:
         raise HTTPException(status_code=403, detail="Only admin or owner can invite users")
 
@@ -137,21 +139,34 @@ async def invite_user(
     if existing.scalars().first():
         raise HTTPException(status_code=409, detail="User with this email already exists")
 
-    # Создаем приглашенного пользователя
+    # Получаем название организации для красивого письма
+    org_res = await db.execute(select(Organization).where(Organization.id == current_user.organization_id))
+    org = org_res.scalars().first()
+    org_name = org.name if org else "IntelliConf"
+
+    invite_token = str(uuid.uuid4())
     new_user = User(
         organization_id=current_user.organization_id,
         email=request.email,
         first_name=request.first_name,
-        password_hash="invited_user_no_password", # Временная заглушка
+        password_hash="invited_no_pass_" + str(uuid.uuid4())[:8],
         role=request.role,
         status=StatusEnum.invited,
-        invite_token=str(uuid.uuid4()),
+        invite_token=invite_token,
     )
     db.add(new_user)
     await db.commit()
     await db.refresh(new_user)
-    
-    # ТУТ В БУДУЩЕМ БУДЕТ SMTP ОТПРАВКА
+
+    # ОТПРАВКА ПИСЬМА В ФОНЕ
+    background_tasks.add_task(
+        send_invite_email, 
+        new_user.email, 
+        new_user.first_name, 
+        invite_token, 
+        org_name
+    )
+
     return new_user
 
 
@@ -188,3 +203,49 @@ async def update_user(
     await db.commit()
     await db.refresh(user)
     return user
+
+@router.post("/forgot-password")
+async def forgot_password(
+    request: dict,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    email = request.get("email")
+    # Используем JOIN, чтобы сразу получить имя организации пользователя
+    result = await db.execute(
+        select(User, Organization.name)
+        .join(Organization, User.organization_id == Organization.id)
+        .where(User.email == email)
+    )
+    row = result.first()
+
+    if row:
+        user, org_name = row
+        user.invite_token = str(uuid.uuid4())
+        await db.commit()
+        # Передаем org_name в задачу
+        background_tasks.add_task(send_reset_password_email, user.email, user.invite_token, org_name)
+
+    return {"success": True, "message": "If this email exists, a reset link has been sent."}
+
+
+@router.post("/reset-password-confirm")
+async def reset_password_confirm(
+    request: dict,
+    db: AsyncSession = Depends(get_db),
+):
+    token = request.get("token")
+    new_password = request.get("password")
+
+    result = await db.execute(select(User).where(User.invite_token == token))
+    user = result.scalars().first()
+
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+
+    user.password_hash = get_password_hash(new_password)
+    user.invite_token = None
+    user.status = StatusEnum.active
+    await db.commit()
+
+    return {"success": True, "message": "Password updated successfully"}

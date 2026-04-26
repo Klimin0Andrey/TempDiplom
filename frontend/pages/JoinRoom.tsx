@@ -6,6 +6,7 @@ import { api } from '../services/api.ts';
 export default function JoinRoom() {
   const { inviteCode } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -13,19 +14,18 @@ export default function JoinRoom() {
       const token = localStorage.getItem('accessToken');
       
       if (!token) {
-        // Если нет токена, запоминаем ссылку и отправляем на логин
-        // После входа мы сможем вернуть пользователя сюда
-        navigate('/login', { state: { returnTo: `/join/${inviteCode}` } });
+        // Сохраняем путь И в state, И в sessionStorage (на случай перезагрузки страницы логина)
+        const returnPath = location.pathname + location.search;
+        sessionStorage.setItem('redirectAfterLogin', returnPath);
+        navigate('/login', { state: { returnTo: returnPath } });
         return;
       }
 
       try {
-        // Ищем комнату по коду приглашения
         const response = await api.rooms.list(); 
         const room = response.rooms.find(r => r.invite_code === inviteCode);
         
         if (room) {
-          // Если нашли — летим в комнату
           navigate(`/room/${room.id}`);
         } else {
           setError("Invalid or expired invite link. Please check the code.");
@@ -39,7 +39,7 @@ export default function JoinRoom() {
     if (inviteCode) {
       resolveInvite();
     }
-  }, [inviteCode, navigate]);
+  }, [inviteCode, navigate, location]);
 
   return (
     <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-50 p-4 text-center">

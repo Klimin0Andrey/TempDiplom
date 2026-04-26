@@ -205,3 +205,19 @@ export interface ProtocolsListResponse {
   protocols: ProtocolShortResponse[];
   total: number;
 }
+
+export interface GenericResponse {
+  success: boolean;
+  message: string;
+}
+
+export interface UserInviteRequest {
+  email: string;
+  first_name: string;
+  role: string;
+}
+
+export interface UserUpdateRequest {
+  role?: string;
+  status?: string;
+}
