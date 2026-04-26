@@ -7,6 +7,7 @@ import {
 const API_BASE_URL = '/api'; // Adjust based on environment (e.g., http://localhost:3000/api)
 
 class ApiError extends Error {
+
   constructor(public status: number, public data: any) {
     super(data?.error || 'API Error');
   }
@@ -51,6 +52,9 @@ export const api = {
     register: (data: any) => fetchApi<RegisterResponse>('/auth/register', { method: 'POST', body: JSON.stringify(data) }),
     logout: () => fetchApi<{success: boolean}>('/auth/logout', { method: 'POST' }),
     getMe: () => fetchApi<UserResponse>('/auth/me', { method: 'GET' }),
+    getUsers: () => fetchApi<UserResponse[]>('/auth/users', { method: 'GET' }),
+    updateUser: (id: string, data: any) => fetchApi<UserResponse>(`/auth/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    invite: (data: any) => fetchApi<UserResponse>('/auth/invite', { method: 'POST', body: JSON.stringify(data) }),
   },
   rooms: {
     list: (params?: { status?: string; limit?: number; offset?: number }) => {

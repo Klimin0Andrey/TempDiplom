@@ -156,3 +156,13 @@ class ProtocolsListResponse(BaseModel):
     success: bool = True
     protocols: list[ProtocolShortResponse]
     total: int
+    
+    
+class UserInviteRequest(BaseModel):
+    email: EmailStr
+    first_name: str
+    role: RoleEnum = RoleEnum.member
+
+class UserUpdateRequest(BaseModel):
+    role: Optional[RoleEnum] = None
+    status: Optional[StatusEnum] = None

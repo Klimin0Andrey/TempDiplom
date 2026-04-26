@@ -36,11 +36,15 @@ export interface UserResponse {
   id: string;
   email: string;
   username?: string;
-  firstName: string;
+  first_name: string;
+  last_name?: string;
+  role: string;
+  status: string;
+  created_at: string;
+  // Оставь camelCase для обратной совместимости
+  firstName?: string;
   lastName?: string;
-  role: UserRole;
-  status: UserStatus;
-  createdAt: string;
+  createdAt?: string;
 }
 
 export interface RoomResponse {
