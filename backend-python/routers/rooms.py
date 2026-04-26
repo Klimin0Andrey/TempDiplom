@@ -104,14 +104,15 @@ async def get_rooms(
         .where(models.Room.organization_id == current_user.organization_id)
     )
 
-    if current_user.role not in [RoleEnum.owner, RoleEnum.admin]:
-        participant_room_ids = select(models.Participant.room_id).where(
-            models.Participant.user_id == current_user.id
-        )
-        query = query.where(
-            (models.Room.creator_id == current_user.id)
-            | (models.Room.id.in_(participant_room_ids))
-        )
+    # Тут ограничение по роля кто может видеть комнаты, была еще мысл сделать возможным создавать комныты с разным статусом: Приватные и открытые
+    # if current_user.role not in [RoleEnum.owner, RoleEnum.admin]:
+    #     participant_room_ids = select(models.Participant.room_id).where(
+    #         models.Participant.user_id == current_user.id
+    #     )
+    #     query = query.where(
+    #         (models.Room.creator_id == current_user.id)
+    #         | (models.Room.id.in_(participant_room_ids))
+    #     )
 
     if status_filter and status_filter not in ("all", "undefined", ""):
         query = query.where(models.Room.status == status_filter)
@@ -300,6 +301,39 @@ async def invite_to_room_by_email(
     )
     
     return {"success": True, "message": f"Invite sent to {email}"}
+
+
+@router.post("/{room_id}/invite-all")
+async def invite_all_organization(
+    room_id: str, 
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db), 
+    current_user: models.User = Depends(get_current_active_user)
+):
+    """Разослать приглашение всем сотрудникам организации."""
+    # Получаем данные комнаты и организации
+    result = await db.execute(
+        select(models.Room, models.Organization.name)
+        .join(models.Organization, models.Room.organization_id == models.Organization.id)
+        .where(models.Room.id == room_id)
+    )
+    row = result.first()
+    if not row: raise HTTPException(status_code=404, detail="Room not found")
+    room, org_name = row
+
+    # Находим всех активных пользователей организации
+    users_res = await db.execute(
+        select(models.User.email)
+        .where(models.User.organization_id == current_user.organization_id, models.User.status == "active")
+    )
+    emails = users_res.scalars().all()
+    inviter = f"{current_user.first_name} {current_user.last_name or ''}".strip()
+
+    # Массовая рассылка в фоне
+    for email in emails:
+        background_tasks.add_task(send_room_invite_email, email, room.name, room.invite_code, inviter, org_name)
+
+    return {"success": True, "sent_to": len(emails)}
 
 # 5. ОБНОВЛЕНИЕ
 @router.put("/{room_id}", response_model=schemas.RoomResponse)

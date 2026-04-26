@@ -10,7 +10,7 @@ from fastapi import BackgroundTasks
 from services.email import send_invite_email, send_reset_password_email
 from database import get_db
 from models import User, Organization, RoleEnum, StatusEnum
-from schemas import RegisterRequest, LoginRequest, TokenResponse, UserResponse, UserInviteRequest, UserUpdateRequest
+from schemas import RegisterRequest, LoginRequest, TokenResponse, UserResponse, UserInviteRequest, UserUpdateRequest, UpdateProfileRequest, ChangePasswordRequest
 from security import get_password_hash, verify_password, create_access_token, create_refresh_token
 from dependencies import get_current_user
 
@@ -52,6 +52,11 @@ async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db))
     db.add(new_user)
     await db.commit()
     await db.refresh(new_user)
+    
+    org_res = await db.execute(
+    select(Organization.name).where(Organization.id == new_user.organization_id)
+    )
+    new_user.organization_name = request.org_name
 
     access_token = create_access_token(str(new_user.id))
     refresh_token = create_refresh_token(str(new_user.id))
@@ -81,10 +86,16 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account is not active",
         )
+        
+    org_res = await db.execute(
+        select(Organization.name).where(Organization.id == user.organization_id)
+    )
+    user.organization_name = org_res.scalar()
 
     access_token = create_access_token(str(user.id))
     refresh_token = create_refresh_token(str(user.id))
-
+    
+    
     return {
         "success": True,
         "accessToken": access_token,
@@ -106,9 +117,40 @@ async def refresh_token():
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_me(current_user: User = Depends(get_current_user)):
-    """Get current authenticated user."""
+async def get_me(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    org_res = await db.execute(select(Organization.name).where(Organization.id == current_user.organization_id))
+    current_user.organization_name = org_res.scalar()
     return current_user
+
+@router.patch("/me", response_model=UserResponse)
+async def update_profile(
+    request: UpdateProfileRequest, 
+    db: AsyncSession = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    """Обновление имени и фамилии текущего пользователя."""
+    if request.first_name is not None:
+        current_user.first_name = request.first_name
+    if request.last_name is not None:
+        current_user.last_name = request.last_name
+    
+    await db.commit()
+    await db.refresh(current_user)
+    
+    # Подтягиваем имя организации для ответа
+    org_res = await db.execute(select(Organization.name).where(Organization.id == current_user.organization_id))
+    current_user.organization_name = org_res.scalar()
+    
+    return current_user
+
+
+@router.post("/change-password")
+async def change_password(request: ChangePasswordRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if not verify_password(request.current_password, current_user.password_hash):
+        raise HTTPException(status_code=400, detail="Incorrect current password")
+    current_user.password_hash = get_password_hash(request.new_password)
+    await db.commit()
+    return {"success": True, "message": "Password changed"}
 
 
 @router.get("/users", response_model=list[UserResponse])

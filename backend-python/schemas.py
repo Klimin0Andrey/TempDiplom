@@ -40,9 +40,9 @@ class UserResponse(UserBase):
     id: UUID
     role: RoleEnum
     status: StatusEnum
+    organization_id: UUID
+    organization_name: Optional[str] = None # ДОБАВЛЕНО
     created_at: datetime
-
-    # Современный способ Pydantic v2 вместо class Config:
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -166,3 +166,13 @@ class UserInviteRequest(BaseModel):
 class UserUpdateRequest(BaseModel):
     role: Optional[RoleEnum] = None
     status: Optional[StatusEnum] = None
+    
+# Схемы для настроек профиля
+class UpdateProfileRequest(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    username: Optional[str] = None
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str

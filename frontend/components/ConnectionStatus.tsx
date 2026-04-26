@@ -9,7 +9,9 @@ export default function ConnectionStatus() {
     const unsubscribe = wsClient.onStateChange((newState) => {
       setStatus(newState);
     });
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   if (status === 'connected') {

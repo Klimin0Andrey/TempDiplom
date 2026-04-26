@@ -1,8 +1,10 @@
 import os
+import asyncio
 import aiosmtplib
 import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.header import Header
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -17,30 +19,45 @@ SMTP_PASS = os.getenv("MAIL_PASSWORD")
 MAIL_FROM = os.getenv("MAIL_FROM")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
-# ИСПРАВЛЕНО: Добавлен параметр from_name
+BATCH_DELAY = 1.5  # секунд между письмами
+MAX_RETRIES = 3
+RETRY_DELAY = 2
+_send_lock = asyncio.Lock()
+
 async def send_email(to: str, subject: str, html_body: str, from_name: str = "IntelliConf"):
-    """Отправка email через SMTP (STARTTLS)."""
+    """Отправка email через SMTP (STARTTLS) с защитой от rate-limiting."""
     msg = MIMEMultipart("alternative")
-    # ТЕПЕРЬ ТУТ БУДЕТ: "Имя Компании via IntelliConf <email>"
-    msg["From"] = f"{from_name} via IntelliConf <{MAIL_FROM}>"
+    display_name = f"{from_name} via Potalkyem"
+    safe_name = display_name.replace("(", "").replace(")", "")
+    msg["From"] = f"=?utf-8?B?{Header(safe_name, 'utf-8').encode()}?= <{MAIL_FROM}>"
     msg["To"] = to
-    msg["Subject"] = subject
+    msg["Subject"] = Header(subject, 'utf-8').encode()
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
-    try:
-        await aiosmtplib.send(
-            msg,
-            hostname=SMTP_HOST,
-            port=SMTP_PORT,
-            username=SMTP_USER,
-            password=SMTP_PASS,
-            use_tls=(SMTP_PORT == 465),
-            start_tls=(SMTP_PORT == 587),
-            timeout=15
-        )
-        logger.info(f"✅ [Email] Sent to {to}: {subject}")
-    except Exception as e:
-        logger.error(f"❌ [Email] Failed to send to {to}. Error: {str(e)}")
+    async with _send_lock:  # Только одно письмо за раз
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                await aiosmtplib.send(
+                    msg,
+                    hostname=SMTP_HOST,
+                    port=SMTP_PORT,
+                    username=SMTP_USER,
+                    password=SMTP_PASS,
+                    use_tls=(SMTP_PORT == 465),   # True только для порта 465
+                    start_tls=(SMTP_PORT == 587),  # True только для порта 587
+                    timeout=15
+                )
+                logger.info(f"✅ [Email] Sent to {to}: {subject}")
+                break  # Успешно — выходим из цикла попыток
+            except Exception as e:
+                logger.warning(f"⚠️ [Email] Attempt {attempt}/{MAX_RETRIES} failed for {to}: {str(e)}")
+                if attempt < MAX_RETRIES:
+                    await asyncio.sleep(RETRY_DELAY * attempt)
+                else:
+                    logger.error(f"❌ [Email] All {MAX_RETRIES} attempts failed for {to}")
+        
+        # Пауза перед следующим письмом
+        await asyncio.sleep(BATCH_DELAY)
 
 async def send_invite_email(email: str, first_name: str, token: str, org_name: str):
     """Письмо-приглашение в ОРГАНИЗАЦИЮ."""

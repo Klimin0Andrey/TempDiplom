@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Users, Clock, PlayCircle, Archive, Loader2, AlertCircle, MoreVertical, Edit, Copy, Trash2, ArchiveIcon } from 'lucide-react';
+import { Plus, Users, Clock, PlayCircle, Archive, Loader2, AlertCircle, MoreVertical, Edit, Copy, Trash2, ArchiveIcon, Mail } from 'lucide-react';
 import { RoomResponse, RoomStatus } from '../types.ts';
 import RoomModal from '../components/RoomModal.tsx';
 import Sidebar from '../components/Sidebar.tsx';
+import InviteToRoomModal from '../components/InviteToRoomModal.tsx';
 import { api } from '../services/api.ts';
 
 export default function Dashboard() {
@@ -16,6 +17,7 @@ export default function Dashboard() {
   
   const [editingRoom, setEditingRoom] = useState<RoomResponse | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [inviteRoom, setInviteRoom] = useState<{id: string, name: string} | null>(null);
   const [showCopyToast, setShowCopyToast] = useState(false);
 
   const fetchRooms = async () => {
@@ -192,10 +194,10 @@ export default function Dashboard() {
                               />
                               <div className="absolute right-0 top-8 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
                                 <button
-                                  onClick={() => { setEditingRoom(room); setOpenMenuId(null); }}
+                                  onClick={() => { setInviteRoom({ id: room.id, name: room.name }); setOpenMenuId(null); }}
                                   className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
                                 >
-                                  <Edit className="w-4 h-4" /> <span>Edit</span>
+                                  <Mail className="w-4 h-4" /> <span>Invite by Email</span>
                                 </button>
                                 <button
                                   onClick={() => handleCopyInviteLink(room)}
@@ -256,6 +258,13 @@ export default function Dashboard() {
         onClose={() => { setIsCreateModalOpen(false); setEditingRoom(null); }}
         onSubmit={editingRoom ? handleEditRoom : handleCreateRoom}
         room={editingRoom}
+      />
+
+      <InviteToRoomModal 
+        isOpen={!!inviteRoom} 
+        onClose={() => setInviteRoom(null)} 
+        roomId={inviteRoom?.id || ''} 
+        roomName={inviteRoom?.name || ''} 
       />
 
       {showCopyToast && (
