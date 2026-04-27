@@ -89,6 +89,9 @@ class RoomResponse(BaseModel):
     creator_id: str
     creator_name: str = ""
     scheduled_start_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None       # ← ДОБАВИТЬ
+    ended_at: Optional[datetime] = None         # ← ДОБАВИТЬ
+    duration_seconds: Optional[int] = None      # ← ДОБАВИТЬ
     participants_count: int = 0
     max_participants: Optional[int] = None
     is_recording: bool = False

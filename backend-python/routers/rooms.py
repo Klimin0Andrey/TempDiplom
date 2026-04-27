@@ -5,6 +5,7 @@ from sqlalchemy import select, func
 from database import get_db
 import models
 import schemas
+from datetime import datetime, timezone
 from dependencies import get_current_active_user, RequireRole
 from models import RoomStatusEnum, RoleEnum
 from fastapi import BackgroundTasks
@@ -210,6 +211,9 @@ async def get_room_by_id(
             "creator_id": str(room.creator_id),
             "creator_name": creator_name,
             "scheduled_start_at": room.scheduled_start_at,
+            "started_at": room.started_at.isoformat() if room.started_at else None,  # ← ВОТ ЭТО ДОБАВЬ
+            "ended_at": room.ended_at.isoformat() if room.ended_at else None,          # ← И ЭТО ТОЖЕ
+            "duration_seconds": room.duration_seconds,                                 # ← И ЭТО
             "participants_count": len(participants),
             "chat_enabled": room.chat_enabled,
             "created_at": room.created_at,
@@ -256,12 +260,12 @@ async def get_chat_history(
         )
         messages.append({
             "id": str(msg.id),
-            "userId": str(msg.user_id) if msg.user_id else None,
+            "user_id": str(msg.user_id) if msg.user_id else None,
             "username": display_name,
             "message": msg.message,
-            "messageType": "text",
-            "createdAt": msg.created_at.isoformat(),
-            "replyToId": str(msg.reply_to_id) if msg.reply_to_id else None,
+            "message_type": "text",
+            "created_at": msg.created_at.isoformat() + "Z",
+            "reply_to_id": str(msg.reply_to_id) if msg.reply_to_id else None,
         })
 
     return {"success": True, "messages": messages}
@@ -412,3 +416,27 @@ async def regenerate_invite(
         "invite_code": room.invite_code,
         "invite_link": f"/join/{room.invite_code}",
     }
+    
+# 9. ЗАВЕРШЕНИЕ ВСТРЕЧИ
+@router.patch("/{room_id}/end")
+async def end_meeting(
+    room_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user)
+):
+    """Завершить встречу (только для организатора или админа)."""
+    room = await _get_room_with_permissions(room_id, db, current_user)
+    
+    if room.status == RoomStatusEnum.ended:
+        return {"success": True, "message": "Already ended"}
+        
+    room.status = RoomStatusEnum.archived
+    room.ended_at = datetime.utcnow()
+    
+    # Считаем длительность
+    if room.started_at:
+        duration = room.ended_at - room.started_at
+        room.duration_seconds = int(duration.total_seconds())
+        
+    await db.commit()
+    return {"success": True, "message": "Meeting ended"}

@@ -17,7 +17,6 @@ export default function InviteToRoomModal({ isOpen, onClose, roomId, roomName }:
   const [sendingEmail, setSendingEmail] = useState<string | null>(null);
   const [sentEmails, setSentEmails] = useState<Set<string>>(new Set());
 
-  // Загружаем список всех сотрудников организации при открытии
   useEffect(() => {
     if (isOpen) {
       const loadUsers = async () => {
@@ -30,10 +29,16 @@ export default function InviteToRoomModal({ isOpen, onClose, roomId, roomName }:
     }
   }, [isOpen]);
 
+  const handleClose = () => {
+    setSearch('');
+    setSentEmails(new Set());
+    onClose();
+  };
+
   const handleInviteOne = async (email: string) => {
     setSendingEmail(email);
     try {
-       await api.rooms.inviteToRoom(roomId, email);
+      await api.rooms.inviteToRoom(roomId, email);
       setSentEmails(prev => new Set(prev).add(email));
     } catch (err) { alert("Failed to send invite"); }
     finally { setSendingEmail(null); }
@@ -45,7 +50,7 @@ export default function InviteToRoomModal({ isOpen, onClose, roomId, roomName }:
     try {
       await api.rooms.inviteAllToRoom(roomId);
       alert("Invitations sent to everyone!");
-      onClose();
+      handleClose();
     } catch (err) { alert("Error sending mass invites"); }
     finally { setIsLoading(false); }
   };
@@ -62,7 +67,9 @@ export default function InviteToRoomModal({ isOpen, onClose, roomId, roomName }:
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in duration-200">
         <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
           <h2 className="text-lg font-bold text-gray-900">Invite to Meeting</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+          <button onClick={handleClose} className="text-gray-400 hover:text-gray-600">
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         <div className="p-4 bg-blue-50/50 border-b border-blue-100">
@@ -76,8 +83,16 @@ export default function InviteToRoomModal({ isOpen, onClose, roomId, roomName }:
             <input 
               type="text" placeholder="Search by name or email..." 
               value={search} onChange={e => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-gray-100 border-none rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              className="w-full pl-10 pr-10 py-2 bg-gray-100 border-none rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
             />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
 
           <div className="max-h-60 overflow-y-auto space-y-1 pr-1">

@@ -186,7 +186,7 @@ export default function Dashboard() {
                             <MoreVertical className="w-4 h-4" />
                           </button>
                           
-                          {openMenuId === room.id && (
+                          {openMenuId === room.id && room.status !== RoomStatus.ARCHIVED && (
                             <>
                               <div 
                                 className="fixed inset-0 z-40" 
@@ -233,16 +233,16 @@ export default function Dashboard() {
                     </div>
                     <button 
                       onClick={() => handleJoinRoom(room.id)}
-                      disabled={room.status === RoomStatus.ARCHIVED}
                       className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                        room.status === RoomStatus.ARCHIVED 
-                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-                          : room.status === RoomStatus.ACTIVE
-                            ? 'bg-green-600 text-white hover:bg-green-700 shadow-sm hover:shadow'
+                        room.status === RoomStatus.ACTIVE
+                          ? 'bg-green-600 text-white hover:bg-green-700 shadow-sm hover:shadow'
+                          : room.status === RoomStatus.ARCHIVED
+                            ? 'bg-gray-600 text-white hover:bg-gray-700'
                             : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-100'
                       }`}
                     >
-                      {room.status === RoomStatus.ACTIVE ? 'Join Now' : 'View Details'}
+                      {room.status === RoomStatus.ACTIVE ? 'Join Now' : 
+                      room.status === RoomStatus.ARCHIVED ? 'View Protocol' : 'View Details'}
                     </button>
                   </div>
                 </div>

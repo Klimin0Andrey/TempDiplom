@@ -41,10 +41,8 @@ export interface UserResponse {
   role: string;
   status: string;
   created_at: string;
-  // Оставь camelCase для обратной совместимости
-  firstName?: string;
-  lastName?: string;
-  createdAt?: string;
+  organization_id: string;
+  organization_name?: string;
 }
 
 export interface RoomResponse {
@@ -60,7 +58,7 @@ export interface RoomResponse {
   scheduled_end_at?: string;
   started_at?: string;
   ended_at?: string;
-  durationSeconds?: number;
+  duration_seconds?: number;
   is_recording: boolean;
   chat_enabled: boolean;
   participants_count: number;
@@ -157,13 +155,13 @@ export interface Participant {
 
 export interface ChatMessage {
   id: string;
-  userId?: string;
+  user_id?: string;
   username?: string;
   message: string;
-  messageType: MessageType;
-  createdAt: string;
-  replyToId?: string;
-  replyToMessage?: string;
+  message_type: MessageType;
+  created_at: string;
+  reply_to_id?: string;
+  reply_to_message?: string;
   mentions?: string[];
   isEdited?: boolean;
   isDeleted?: boolean;

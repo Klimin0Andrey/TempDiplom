@@ -101,6 +101,7 @@ export const api = {
     }),
     delete: (id: string) => fetchApi<void>(`/rooms/${id}`, { method: 'DELETE' }),
     archive: (id: string) => fetchApi<GenericResponse>(`/rooms/${id}/archive`, { method: 'PATCH' }),
+    end: (id: string) => fetchApi<GenericResponse>(`/rooms/${id}/end`, { method: 'PATCH' }),
     regenerateInvite: (id: string) => fetchApi<{success: boolean, invite_code: string}>(`/rooms/${id}/regenerate-invite`, { method: 'POST' }),
     
     // ========================

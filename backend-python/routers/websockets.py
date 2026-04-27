@@ -2,7 +2,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from typing import Dict
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from sqlalchemy import select
 
 import security
@@ -92,6 +92,22 @@ async def websocket_endpoint(
     # 3. Подключаем пользователя к комнате
     await manager.connect(websocket, room_id, user_id)
 
+    # ЛОГИКА ТАЙМЕРА: Если комната запланирована, переводим в статус ACTIVE
+    async with AsyncSessionLocal() as db:
+        room_res = await db.execute(select(models.Room).where(models.Room.id == room_id))
+        room = room_res.scalars().first()
+        
+        if room and room.status == models.RoomStatusEnum.scheduled:
+            room.status = models.RoomStatusEnum.active
+            room.started_at = datetime.utcnow()  # ← БЕЗ timezone
+            await db.commit()
+            # Уведомляем всех в комнате, что встреча началась
+            await manager.broadcast(room_id, {
+                "type": "system",
+                "message": "Meeting has officially started",
+                "started_at": room.started_at.isoformat() + "Z"
+            })
+
     # Уведомляем остальных, что зашел новый участник
     await manager.broadcast(
         room_id,
@@ -123,22 +139,26 @@ async def websocket_endpoint(
                 if first_name
                 else "Unknown User"
             )
+            
             history.append({
                 "type": "chat",
                 "id": str(msg.id),
-                "userId": str(msg.user_id) if msg.user_id else None,
+                "user_id": str(msg.user_id) if msg.user_id else None,
                 "username": display_name,
                 "message": msg.message,
-                "messageType": "text",
-                "createdAt": msg.created_at.isoformat(),
-                "replyToId": str(msg.reply_to_id) if msg.reply_to_id else None,
+                "message_type": "text",
+                "created_at": msg.created_at.isoformat() + "Z",
+                "reply_to_id": str(msg.reply_to_id) if msg.reply_to_id else None,
             })
 
         if history:
-            await websocket.send_json({
-                "type": "chat_history",
-                "messages": history,
-            })
+            try:
+                await websocket.send_json({
+                    "type": "chat_history",
+                    "messages": history,
+                })
+            except Exception:
+                pass
 
     try:
         while True:
@@ -148,20 +168,19 @@ async def websocket_endpoint(
             msg_type = message_data.get("type")
 
             if msg_type == "chat":
-                # Рассылаем всем
-                chat_msg = {
+                new_id = str(uuid.uuid4())
+                await manager.broadcast(room_id, {
                     "type": "chat",
-                    "id": str(uuid.uuid4()),
+                    "id": new_id,
+                    "user_id": user_id,
                     "userId": user_id,
                     "username": username,
                     "message": message_data.get("message"),
-                    "messageType": "text",
-                    "createdAt": datetime.now(timezone.utc).isoformat(),
-                    "replyToId": message_data.get("reply_to_id"),
-                }
-                await manager.broadcast(room_id, chat_msg)
+                    "message_type": "text",
+                    "created_at": datetime.utcnow().isoformat() + "Z",
+                    "reply_to_id": message_data.get("reply_to_id")
+                })
 
-                # Сохраняем сообщение в базу
                 async with AsyncSessionLocal() as db:
                     reply_to = message_data.get("reply_to_id")
                     if reply_to:
@@ -175,6 +194,7 @@ async def websocket_endpoint(
                             reply_to = None
 
                     chat_message = models.ChatMessage(
+                        id=new_id,
                         room_id=room_id,
                         user_id=user_id,
                         message=message_data.get("message", ""),

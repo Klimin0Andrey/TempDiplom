@@ -4,10 +4,12 @@ import {
   Mic, MicOff, PhoneOff, Users, MessageSquare, 
   Settings, Hand, Share, MoreVertical, Send, Info, FileText, Reply, X, Circle
 } from 'lucide-react';
-import { Participant, ChatMessage, ProtocolResponse } from '../types.ts';
+import { Participant, ChatMessage, ProtocolResponse, RoomResponse } from '../types.ts';
 import ProtocolViewer from '../components/ProtocolViewer.tsx';
 import ConnectionStatus from '../components/ConnectionStatus.tsx';
 import { wsClient } from '../services/websocket.ts';
+import { api } from '../services/api.ts';
+import { AlertTriangle } from 'lucide-react';
 
 const MOCK_PROTOCOL: ProtocolResponse = {
   id: 'prot_123',
@@ -54,6 +56,65 @@ export default function Room() {
   const [isProtocolViewerOpen, setIsProtocolViewerOpen] = useState(false);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const [room, setRoom] = useState<RoomResponse | null>(null);
+  const [elapsedTime, setElapsedTime] = useState('00:00:00');
+  const userStr = localStorage.getItem('user');
+  const currentUser = userStr ? JSON.parse(userStr) : null;
+
+  // Загрузка данных комнаты
+  useEffect(() => {
+      if (!roomId) return;
+      api.rooms.getById(roomId).then(res => {
+          const roomData = { ...res.room };
+          if (roomData.started_at) {
+              // Проверяем тип: если это объект (datetime из Pydantic) — конвертируем в строку
+              if (typeof roomData.started_at !== 'string') {
+                  roomData.started_at = new Date(roomData.started_at).toISOString();
+              }
+              // Добавляем Z если нужно
+              if (!roomData.started_at.endsWith('Z') && !roomData.started_at.includes('+')) {
+                  roomData.started_at += 'Z';
+              }
+          }
+          console.log('Room started_at:', roomData.started_at); // для проверки
+          console.log('ROOM DATA:', JSON.stringify(roomData, null, 2));
+          setRoom(roomData);
+      }).catch(console.error);
+  }, [roomId]);
+
+    // Таймер
+    useEffect(() => {
+        // Для завершённых комнат показываем итоговое время
+        if (room?.duration_seconds && (room?.status === 'ended' || room?.status === 'archived')) {
+            const h = String(Math.floor(room.duration_seconds / 3600)).padStart(2, '0');
+            const m = String(Math.floor((room.duration_seconds % 3600) / 60)).padStart(2, '0');
+            const s = String(room.duration_seconds % 60).padStart(2, '0');
+            setElapsedTime(`${h}:${m}:${s}`);
+            return;
+        }
+
+        if (!room?.started_at) {
+            setElapsedTime('00:00:00');
+            return;
+        }
+
+        const updateTimer = () => {
+            const start = new Date(room.started_at!).getTime();
+            const diff = Math.floor((Date.now() - start) / 1000);
+            if (diff < 0) {
+                setElapsedTime('00:00:00');
+                return;
+            }
+            const h = String(Math.floor(diff / 3600)).padStart(2, '0');
+            const m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
+            const s = String(diff % 60).padStart(2, '0');
+            setElapsedTime(`${h}:${m}:${s}`);
+        };
+
+        updateTimer();
+        const interval = setInterval(updateTimer, 1000);
+        return () => clearInterval(interval);
+    }, [room?.started_at, room?.status, room?.duration_seconds]);
 
   // WebSocket Integration
   useEffect(() => {
@@ -68,16 +129,36 @@ export default function Room() {
     wsClient.connect(roomId, token);
 
     const handleIncomingChat = (msg: ChatMessage) => {
-      setMessages(prev => [...prev, msg]);
+        // Если username нет — попробуй взять из userId (для старых сообщений)
+        if (!msg.username && msg.user_id) {
+            const participant = participants.find(p => p.userId === msg.user_id);
+            msg.username = participant?.username || 'User';
+        }
+        setMessages(prev => [...prev, msg]);
     };
 
     const handleSystem = (data: any) => {
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         message: data.message,
-        messageType: 'system',
-        createdAt: new Date().toISOString()
+        message_type: 'system',
+        created_at: new Date().toISOString()
       }]);
+
+      if (data.started_at) {
+          const startedAt = (data.started_at.endsWith('Z') || data.started_at.includes('+')) 
+              ? data.started_at 
+              : data.started_at + 'Z';
+          setRoom(prev => {
+              if (!prev) return prev;
+              return { ...prev, started_at: startedAt };
+          });
+      }
+
+      if (data.message && data.message.includes('ended by organizer')) {
+          navigate('/dashboard');
+          return;
+      }
 
       if (data.message.includes('joined')) {
         setParticipants(prev => {
@@ -112,8 +193,8 @@ export default function Room() {
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         message: `Protocol "${data.title || 'Meeting Summary'}" is ready.`,
-        messageType: 'notification',
-        createdAt: new Date().toISOString()
+        message_type: 'notification',
+        created_at: new Date().toISOString()
       }]);
     };
 
@@ -177,6 +258,14 @@ export default function Room() {
     navigate('/dashboard');
   };
 
+  const handleEndMeeting = async () => {
+    if (!roomId || !confirm("End this meeting for everyone?")) return;
+    try {
+      await api.rooms.end(roomId);
+      navigate('/dashboard');
+    } catch (err) { alert("Failed to end meeting"); }
+  };
+
   return (
     <div className="h-screen w-screen bg-gray-900 flex flex-col text-gray-100 overflow-hidden">
       {/* Top Header */}
@@ -192,7 +281,7 @@ export default function Room() {
                 <Circle className="w-2 h-2 fill-current mr-1" /> Auto-Recording
               </span>
               <span className="text-gray-600">•</span>
-              <span className="text-xs text-gray-400">00:15:24</span>
+              <span className="text-xs text-gray-400 font-mono">{elapsedTime}</span>
               <span className="text-gray-600">•</span>
               <ConnectionStatus />
             </div>
@@ -250,7 +339,7 @@ export default function Room() {
               </div>
 
               {/* Remote Participants */}
-              {participants.map(p => (
+              {participants.filter(p => p.userId !== currentUser?.id).map(p => (
                 <div key={p.id} className="flex items-center justify-between p-2 rounded-md hover:bg-gray-700 group">
                   <div className="flex items-center space-x-3 overflow-hidden">
                     <div className="relative">
@@ -311,7 +400,7 @@ export default function Room() {
             
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {messages.map(msg => {
-                if (msg.messageType === 'system') {
+                if (msg.message_type === 'system') {
                   return (
                     <div key={msg.id} className="flex justify-center">
                       <span className="text-xs text-gray-500 italic bg-gray-800/50 px-3 py-1 rounded-full text-center">
@@ -321,7 +410,7 @@ export default function Room() {
                   );
                 }
                 
-                if (msg.messageType === 'notification') {
+                if (msg.message_type === 'notification') {
                   return (
                     <div key={msg.id} className="flex items-center space-x-2 bg-blue-900/30 border border-blue-800/50 p-3 rounded-lg cursor-pointer hover:bg-blue-900/50 transition-colors" onClick={() => setIsProtocolViewerOpen(true)}>
                       <Info className="w-4 h-4 text-blue-400 shrink-0" />
@@ -336,21 +425,23 @@ export default function Room() {
                       <div className="flex items-baseline space-x-2">
                         <span className="font-medium text-sm text-blue-400">{msg.username}</span>
                         <span className="text-xs text-gray-500">
-                          {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {msg.created_at ? new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                         </span>
                       </div>
-                      <button 
-                        onClick={() => setReplyTo(msg)}
-                        className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-white transition-opacity"
-                      >
-                        <Reply className="w-3.5 h-3.5" />
-                      </button>
+                      {room?.status !== 'ended' && room?.status !== 'archived' && (
+                        <button 
+                          onClick={() => setReplyTo(msg)}
+                          className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-white transition-opacity"
+                        >
+                          <Reply className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                     
                     <div className="rounded-lg rounded-tl-none p-3 text-sm bg-gray-700 text-gray-200">
-                      {msg.replyToId && (
+                      {msg.reply_to_id && (
                         <div className="mb-2 pl-2 border-l-2 border-gray-500 text-xs text-gray-400 italic line-clamp-1">
-                          {messages.find(m => m.id === msg.replyToId)?.message || 'Reply to a message'}
+                          {messages.find(m => m.id === msg.reply_to_id)?.message || 'Reply to a message'}
                         </div>
                       )}
                       {msg.message}
@@ -361,36 +452,42 @@ export default function Room() {
               <div ref={chatEndRef} />
             </div>
 
-            <div className="p-3 border-t border-gray-700 bg-gray-800 flex flex-col">
-              {replyingTo && (
-                <div className="flex items-center justify-between bg-gray-700/50 px-3 py-1.5 rounded-t-md border-b border-gray-600">
-                  <div className="flex items-center space-x-2 text-xs text-gray-300 truncate">
-                    <Reply className="w-3 h-3" />
-                    <span className="font-medium">{replyingTo.username}:</span>
-                    <span className="truncate">{replyingTo.message}</span>
+            {room?.status !== 'ended' && room?.status !== 'archived' ? (
+              <div className="p-3 border-t border-gray-700 bg-gray-800 flex flex-col">
+                {replyingTo && (
+                  <div className="flex items-center justify-between bg-gray-700/50 px-3 py-1.5 rounded-t-md border-b border-gray-600">
+                    <div className="flex items-center space-x-2 text-xs text-gray-300 truncate">
+                      <Reply className="w-3 h-3" />
+                      <span className="font-medium">{replyingTo.username}:</span>
+                      <span className="truncate">{replyingTo.message}</span>
+                    </div>
+                    <button onClick={() => setReplyTo(null)} className="text-gray-400 hover:text-white">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                  <button onClick={() => setReplyTo(null)} className="text-gray-400 hover:text-white">
-                    <X className="w-3.5 h-3.5" />
+                )}
+                <form onSubmit={handleSendMessage} className="relative">
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={handleTyping}
+                    placeholder="Send a message..."
+                    className={`w-full bg-gray-900 border border-gray-600 pl-4 pr-12 py-2.5 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 ${replyingTo ? 'rounded-b-md' : 'rounded-full'}`}
+                  />
+                  <button 
+                    type="submit"
+                    disabled={!chatInput.trim()}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <Send className="w-4 h-4" />
                   </button>
-                </div>
-              )}
-              <form onSubmit={handleSendMessage} className="relative">
-                <input
-                  type="text"
-                  value={chatInput}
-                  onChange={handleTyping}
-                  placeholder="Send a message..."
-                  className={`w-full bg-gray-900 border border-gray-600 pl-4 pr-12 py-2.5 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 ${replyingTo ? 'rounded-b-md' : 'rounded-full'}`}
-                />
-                <button 
-                  type="submit"
-                  disabled={!chatInput.trim()}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  <Send className="w-4 h-4" />
-                </button>
-              </form>
-            </div>
+                </form>
+              </div>
+            ) : (
+              <div className="p-3 border-t border-gray-700 bg-gray-800 text-center">
+                <span className="text-xs text-gray-500">Meeting has ended</span>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -432,6 +529,12 @@ export default function Room() {
           <PhoneOff className="w-5 h-5" />
           <span>Leave</span>
         </button>
+         {room?.creator_id === currentUser?.id && (
+          <button onClick={handleEndMeeting} className="px-6 py-3 rounded-full bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 font-medium flex items-center space-x-2 transition-colors">
+            <AlertTriangle className="w-5 h-5" />
+            <span>End Meeting</span>
+          </button>
+        )}
       </div>
 
       <ProtocolViewer 
