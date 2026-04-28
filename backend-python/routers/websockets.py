@@ -159,7 +159,33 @@ async def websocket_endpoint(
                 })
             except Exception:
                 pass
-
+        
+        # 5. Отправляем новому участнику список тех, кто уже в комнате
+        participants_list = manager.get_participants(room_id)
+        participants_info = []
+        for pid in participants_list:
+            if pid != user_id:
+                async with AsyncSessionLocal() as db:
+                    u_result = await db.execute(
+                        select(models.User).where(models.User.id == pid)
+                    )
+                    u = u_result.scalars().first()
+                    p_name = f"{u.first_name} {u.last_name or ''}".strip() if u else "Unknown"
+                participants_info.append({
+                    "userId": pid,
+                    "username": p_name,
+                })
+        
+        if participants_info:
+            try:
+                await websocket.send_json({
+                    "type": "participants_list",
+                    "participants": participants_info,
+                })
+            except Exception:
+                pass
+        
+        
     try:
         while True:
             # Ожидаем сообщения от клиента

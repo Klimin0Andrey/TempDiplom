@@ -210,12 +210,35 @@ export default function Room() {
     wsClient.on('presence', handlePresence);
     wsClient.on('protocol_ready', handleProtocolReady);
 
+    const handleParticipantsList = (data: any) => {
+      if (data.participants && Array.isArray(data.participants)) {
+        setParticipants(prev => {
+          const existing = new Set(prev.map(p => p.userId));
+          const newParticipants = data.participants
+            .filter((p: any) => !existing.has(p.userId))
+            .map((p: any) => ({
+              id: p.userId,
+              userId: p.userId,
+              username: p.username || 'User',
+              roleInRoom: 'participant' as const,
+              isMuted: false,
+              handRaised: false,
+              presenceStatus: 'idle' as const,
+            }));
+          return [...prev, ...newParticipants];
+        });
+      }
+    };
+
+    wsClient.on('participants_list', handleParticipantsList);
+
     return () => {
       wsClient.off('chat', handleIncomingChat);
       wsClient.off('chat_history', handleChatHistory);
       wsClient.off('system', handleSystem);
       wsClient.off('presence', handlePresence);
       wsClient.off('protocol_ready', handleProtocolReady);
+      wsClient.off('participants_list', handleParticipantsList);
       wsClient.disconnect();
     };
   }, [roomId, navigate]);
@@ -261,6 +284,8 @@ export default function Room() {
   const handleEndMeeting = async () => {
     if (!roomId || !confirm("End this meeting for everyone?")) return;
     try {
+      // Отправляем WebSocket-уведомление всем участникам
+      wsClient.send('end_room', { roomId });
       await api.rooms.end(roomId);
       navigate('/dashboard');
     } catch (err) { alert("Failed to end meeting"); }
@@ -320,16 +345,18 @@ export default function Room() {
               <h2 className="font-semibold text-sm">Participants ({participants.length + 1})</h2>
             </div>
             <div className="flex-1 overflow-y-auto p-2 space-y-1">
-              {/* Self Participant (Mocked for UI since we don't get our own presence back) */}
+              {/* Self Participant */}
               <div className="flex items-center justify-between p-2 rounded-md hover:bg-gray-700 group">
                 <div className="flex items-center space-x-3 overflow-hidden">
                   <div className="relative">
                     <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-sm font-bold">
-                      Y
+                      {currentUser?.first_name?.charAt(0)?.toUpperCase() || '?'}
                     </div>
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-sm truncate">You</span>
+                    <span className="text-sm truncate">
+                      {currentUser?.first_name || 'You'} {currentUser?.last_name || ''}
+                    </span>
                   </div>
                 </div>
                 <div className="flex items-center space-x-1 text-gray-400">

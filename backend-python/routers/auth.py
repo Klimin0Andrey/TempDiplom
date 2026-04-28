@@ -10,8 +10,8 @@ from fastapi import BackgroundTasks
 from services.email import send_invite_email, send_reset_password_email
 from database import get_db
 from models import User, Organization, RoleEnum, StatusEnum
-from schemas import RegisterRequest, LoginRequest, TokenResponse, UserResponse, UserInviteRequest, UserUpdateRequest, UpdateProfileRequest, ChangePasswordRequest
-from security import get_password_hash, verify_password, create_access_token, create_refresh_token
+from schemas import RegisterRequest, LoginRequest, TokenResponse, UserResponse, UserInviteRequest, UserUpdateRequest, UpdateProfileRequest, ChangePasswordRequest, RefreshTokenRequest
+from security import get_password_hash, verify_password, create_access_token, create_refresh_token, decode_token
 from dependencies import get_current_user
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
@@ -111,9 +111,50 @@ async def logout():
 
 
 @router.post("/refresh")
-async def refresh_token():
-    """Refresh access token (placeholder)."""
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+async def refresh_token(
+    request: RefreshTokenRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Refresh access token using refresh token."""
+    # Декодируем refresh токен
+    payload = decode_token(request.refreshToken)
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
+
+    # Проверяем, что это refresh-токен (не access)
+    if payload.get("type") != "refresh":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token type",
+        )
+
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+        )
+
+    # Проверяем, что пользователь существует и активен
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalars().first()
+
+    if not user or user.status != StatusEnum.active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+        )
+
+    # Выдаём новый access токен
+    new_access_token = create_access_token(str(user.id))
+
+    return {
+        "success": True,
+        "accessToken": new_access_token,
+    }
 
 
 @router.get("/me", response_model=UserResponse)

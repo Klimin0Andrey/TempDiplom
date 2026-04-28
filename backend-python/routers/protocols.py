@@ -139,6 +139,41 @@ async def get_protocol_by_id(
     }
 
 
+@router.get("/{protocol_id}/download")
+async def download_protocol(
+    protocol_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Get download link for protocol PDF."""
+    result = await db.execute(
+        select(models.Protocol).where(models.Protocol.id == protocol_id)
+    )
+    protocol = result.scalars().first()
+
+    if not protocol:
+        raise HTTPException(status_code=404, detail="Protocol not found")
+
+    # Проверяем доступ: пользователь должен быть создателем комнаты
+    room_result = await db.execute(
+        select(models.Room).where(models.Room.id == protocol.room_id)
+    )
+    room = room_result.scalars().first()
+
+    if not room or str(room.creator_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if not protocol.pdf_url:
+        raise HTTPException(
+            status_code=404,
+            detail="PDF not yet generated for this protocol",
+        )
+
+    return {
+        "success": True,
+        "pdf_url": protocol.pdf_url,
+    }
+
 @router.delete("/{protocol_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_protocol(
     protocol_id: str,

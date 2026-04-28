@@ -175,6 +175,9 @@ class UpdateProfileRequest(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     username: Optional[str] = None
+    
+class RefreshTokenRequest(BaseModel):
+    refreshToken: str
 
 class ChangePasswordRequest(BaseModel):
     current_password: str

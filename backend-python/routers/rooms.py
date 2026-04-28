@@ -122,6 +122,21 @@ async def get_rooms(
     result = await db.execute(query)
     rows = result.all()
 
+    # ОПТИМИЗАЦИЯ: Один запрос для подсчёта участников всех комнат
+    room_ids = [r.id for r, _, _ in rows]
+    participants_count_map = {}
+    if room_ids:
+        count_query = (
+            select(
+                models.Participant.room_id,
+                func.count().label("count")
+            )
+            .where(models.Participant.room_id.in_(room_ids))
+            .group_by(models.Participant.room_id)
+        )
+        count_result = await db.execute(count_query)
+        participants_count_map = {row[0]: row[1] for row in count_result}
+
     total_result = await db.execute(
         select(func.count()).select_from(models.Room).where(
             models.Room.organization_id == current_user.organization_id
@@ -131,11 +146,6 @@ async def get_rooms(
 
     room_responses = []
     for r, first_name, last_name in rows:
-        pc_result = await db.execute(
-            select(func.count())
-            .select_from(models.Participant)
-            .where(models.Participant.room_id == r.id)
-        )
         creator_name = (
             f"{first_name} {last_name or ''}".strip()
             if first_name
@@ -151,7 +161,7 @@ async def get_rooms(
             "creator_id": str(r.creator_id),
             "creator_name": creator_name,
             "scheduled_start_at": r.scheduled_start_at,
-            "participants_count": pc_result.scalar() or 0,
+            "participants_count": participants_count_map.get(r.id, 0),
             "created_at": r.created_at,
             "updated_at": r.updated_at,
         })
@@ -439,4 +449,15 @@ async def end_meeting(
         room.duration_seconds = int(duration.total_seconds())
         
     await db.commit()
+    # Уведомляем всех участников через WebSocket
+    try:
+        from routers.websockets import manager
+        await manager.broadcast(room_id, {
+            "type": "system",
+            "message": "Meeting ended by organizer",
+            "userId": str(current_user.id),
+        })
+    except Exception:
+        pass  # WebSocket может быть недоступен
+    
     return {"success": True, "message": "Meeting ended"}
