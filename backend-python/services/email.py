@@ -5,6 +5,9 @@ import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.header import Header
+from email.mime.base import MIMEBase
+from email import encoders
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -29,7 +32,7 @@ async def send_email(to: str, subject: str, html_body: str, from_name: str = "In
     msg = MIMEMultipart("alternative")
     display_name = f"{from_name} via Potalkyem"
     safe_name = display_name.replace("(", "").replace(")", "")
-    msg["From"] = f"=?utf-8?B?{Header(safe_name, 'utf-8').encode()}?= <{MAIL_FROM}>"
+    msg["From"] = f"{from_name} via Potalkyem <{MAIL_FROM}>"
     msg["To"] = to
     msg["Subject"] = Header(subject, 'utf-8').encode()
     msg.attach(MIMEText(html_body, "html", "utf-8"))
@@ -107,3 +110,95 @@ async def send_reset_password_email(email: str, token: str, org_name: str):
     </div>
     """
     await send_email(email, f"Reset your password for {org_name}", html, from_name=org_name)
+    
+def generate_ics_content(room_name: str, invite_code: str, org_name: str, scheduled_start_at: datetime = None) -> str:
+    """Генерирует содержимое .ics файла для календаря."""
+    join_url = f"{FRONTEND_URL}/#/join/{invite_code}"
+    
+    if not scheduled_start_at:
+        scheduled_start_at = datetime.utcnow() + timedelta(hours=1)
+    
+    dtstart = scheduled_start_at.strftime("%Y%m%dT%H%M%SZ")
+    dtend = (scheduled_start_at + timedelta(hours=1)).strftime("%Y%m%dT%H%M%SZ")
+    dtstamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    uid = f"{invite_code}@potalkyem"
+    
+    return f"""BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Potalkyem//Conference Platform//EN
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:{uid}
+DTSTAMP:{dtstamp}
+DTSTART:{dtstart}
+DTEND:{dtend}
+SUMMARY:{room_name}
+DESCRIPTION:You have been invited to a conference in {org_name}.\\n\\nJoin: {join_url}
+LOCATION:Online ({join_url})
+ORGANIZER;CN={org_name}:MAILTO:noreply@potalkyem.com
+STATUS:CONFIRMED
+END:VEVENT
+END:VCALENDAR"""
+
+
+async def send_room_invite_email_with_ics(
+    email: str, room_name: str, invite_code: str, inviter_name: str, 
+    org_name: str, scheduled_start_at: datetime = None
+):
+    """Письмо-приглашение в комнату с вложением .ics для календаря."""
+    join_url = f"{FRONTEND_URL}/#/join/{invite_code}"
+    
+    ics_content = generate_ics_content(room_name, invite_code, org_name, scheduled_start_at)
+    
+    msg = MIMEMultipart("mixed")
+    display_name = f"{org_name} via Potalkyem"
+    safe_name = display_name.replace("(", "").replace(")", "")
+    msg["From"] = f"{org_name} <{MAIL_FROM}>"
+    msg["To"] = email
+    msg["Subject"] = Header(f"Invitation: {room_name}", 'utf-8').encode()
+    
+    # HTML часть
+    html = f"""
+    <div style="font-family: sans-serif; max-width: 600px; margin: auto; border: 1px solid #e5e7eb; border-radius: 16px; padding: 40px;">
+        <h2 style="color: #2563eb;">Meeting Invitation</h2>
+        <p><b>{inviter_name}</b> from <b>{org_name}</b> has invited you to a conference:</p>
+        <div style="background: #f3f4f6; padding: 20px; border-radius: 12px; margin: 20px 0;">
+            <p style="margin: 0; font-weight: bold; font-size: 18px;">{room_name}</p>
+        </div>
+        <p style="color: #666;">📅 A calendar invitation is attached — click to add to your Google/Outlook calendar.</p>
+        <a href="{join_url}" style="background: #059669; color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Join Meeting</a>
+    </div>
+    """
+    msg.attach(MIMEText(html, "html", "utf-8"))
+    
+    # ICS вложение
+    ics_part = MIMEBase("text", "calendar", method="REQUEST", name="invite.ics")
+    ics_part.set_payload(ics_content)
+    ics_part.add_header("Content-Disposition", "attachment; filename=\"invite.ics\"")
+    encoders.encode_base64(ics_part)
+    ics_part.add_header("Content-Class", "urn:content-classes:calendarmessage")
+    msg.attach(ics_part)
+    
+    async with _send_lock:
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                await aiosmtplib.send(
+                    msg,
+                    hostname=SMTP_HOST,
+                    port=SMTP_PORT,
+                    username=SMTP_USER,
+                    password=SMTP_PASS,
+                    use_tls=(SMTP_PORT == 465),
+                    start_tls=(SMTP_PORT == 587),
+                    timeout=15
+                )
+                logger.info(f"✅ [Email+ICS] Sent to {email}: Invitation: {room_name}")
+                break
+            except Exception as e:
+                logger.warning(f"⚠️ [Email+ICS] Attempt {attempt}/{MAX_RETRIES} failed for {email}: {str(e)}")
+                if attempt < MAX_RETRIES:
+                    await asyncio.sleep(RETRY_DELAY * attempt)
+                else:
+                    logger.error(f"❌ [Email+ICS] All {MAX_RETRIES} attempts failed for {email}")
+        
+        await asyncio.sleep(BATCH_DELAY)

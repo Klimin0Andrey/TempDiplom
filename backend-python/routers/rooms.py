@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from dependencies import get_current_active_user, RequireRole
 from models import RoomStatusEnum, RoleEnum
 from fastapi import BackgroundTasks
-from services.email import send_room_invite_email
+from services.email import send_room_invite_email, send_room_invite_email_with_ics
 
 router = APIRouter(prefix="/api/rooms", tags=["Rooms"])
 
@@ -306,12 +306,13 @@ async def invite_to_room_by_email(
 
     # Передаем org_name последним аргументом
     background_tasks.add_task(
-        send_room_invite_email, 
+        send_room_invite_email_with_ics, 
         email, 
         room.name, 
         room.invite_code, 
         inviter,
-        org_name
+        org_name,
+        room.scheduled_start_at
     )
     
     return {"success": True, "message": f"Invite sent to {email}"}
