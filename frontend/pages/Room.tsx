@@ -126,7 +126,9 @@ export default function Room() {
       return;
     }
     
-    wsClient.connect(roomId, token);
+    if (room?.status !== 'ended' && room?.status !== 'archived') {
+      wsClient.connect(roomId, token);
+    }
 
     const handleIncomingChat = (msg: ChatMessage) => {
         // Если username нет — попробуй взять из userId (для старых сообщений)
@@ -302,9 +304,11 @@ export default function Room() {
           <div>
             <h1 className="font-semibold text-sm">Conference Room</h1>
             <div className="flex items-center space-x-2">
-              <span className="flex items-center text-xs text-red-400 font-medium animate-pulse">
-                <Circle className="w-2 h-2 fill-current mr-1" /> Auto-Recording
-              </span>
+              {(room?.status !== 'ended' && room?.status !== 'archived') && (
+                <span className="flex items-center text-xs text-red-400 font-medium animate-pulse">
+                  <Circle className="w-2 h-2 fill-current mr-1" /> Auto-Recording
+                </span>
+              )}
               <span className="text-gray-600">•</span>
               <span className="text-xs text-gray-400 font-mono">{elapsedTime}</span>
               <span className="text-gray-600">•</span>
@@ -359,10 +363,12 @@ export default function Room() {
                     </span>
                   </div>
                 </div>
-                <div className="flex items-center space-x-1 text-gray-400">
-                  {isHandRaised && <Hand className="w-4 h-4 text-yellow-500" />}
-                  {isMuted ? <MicOff className="w-4 h-4 text-red-400" /> : <Mic className="w-4 h-4 text-green-400" />}
-                </div>
+                {(room?.status !== 'ended' && room?.status !== 'archived') && (
+                  <div className="flex items-center space-x-1 text-gray-400">
+                    {isHandRaised && <Hand className="w-4 h-4 text-yellow-500" />}
+                    {isMuted ? <MicOff className="w-4 h-4 text-red-400" /> : <Mic className="w-4 h-4 text-green-400" />}
+                  </div>
+                )}
               </div>
 
               {/* Remote Participants */}
@@ -384,38 +390,63 @@ export default function Room() {
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center space-x-1 text-gray-400">
-                    {p.handRaised && <Hand className="w-4 h-4 text-yellow-500" />}
-                    {p.isMuted ? <MicOff className="w-4 h-4 text-red-400" /> : <Mic className="w-4 h-4 text-green-400" />}
-                  </div>
+                  {(room?.status !== 'ended' && room?.status !== 'archived') && (
+                    <div className="flex items-center space-x-1 text-gray-400">
+                      {p.handRaised && <Hand className="w-4 h-4 text-yellow-500" />}
+                      {p.isMuted ? <MicOff className="w-4 h-4 text-red-400" /> : <Mic className="w-4 h-4 text-green-400" />}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* Center: Media & AI Processing Area */}
+        {/* Center: Content Area */}
         <div className="flex-1 bg-gray-900 flex flex-col items-center justify-center p-6 relative">
-          <div className="absolute inset-0 flex items-center justify-center opacity-5 pointer-events-none">
-            <Mic className="w-96 h-96" />
-          </div>
-          
-          <div className="max-w-2xl w-full bg-gray-800/50 border border-gray-700 border-dashed rounded-2xl p-12 text-center backdrop-blur-sm">
-            <h2 className="text-2xl font-bold text-gray-300 mb-4">Media & AI Processing Area</h2>
-            <p className="text-gray-400 mb-6">
-              This space is reserved for the second student's module. 
-              It will contain WebRTC audio streams, active speaker visualization, 
-              and real-time STT (Speech-to-Text) transcriptions.
-            </p>
-            <div className="flex flex-col items-center">
-              <div className="flex justify-center space-x-4 mb-4">
-                <div className="h-3 w-12 bg-blue-500 rounded-full animate-pulse"></div>
-                <div className="h-3 w-16 bg-blue-400 rounded-full animate-pulse delay-75"></div>
-                <div className="h-3 w-8 bg-blue-600 rounded-full animate-pulse delay-150"></div>
+          {(room?.status === 'ended' || room?.status === 'archived') ? (
+            /* Итоговая информация для завершённых встреч */
+            <div className="max-w-2xl w-full bg-gray-800/50 border border-gray-700 rounded-2xl p-8 backdrop-blur-sm">
+              <h2 className="text-xl font-bold text-gray-200 mb-6 text-center">Meeting Summary</h2>
+              <div className="grid grid-cols-2 gap-4 text-center">
+                <div className="bg-gray-700/50 rounded-xl p-4">
+                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Duration</p>
+                  <p className="text-2xl font-bold text-white">{elapsedTime}</p>
+                </div>
+                <div className="bg-gray-700/50 rounded-xl p-4">
+                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Participants</p>
+                  <p className="text-2xl font-bold text-white">{participants.length + 1}</p>
+                </div>
+                <div className="bg-gray-700/50 rounded-xl p-4 col-span-2">
+                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Status</p>
+                  <p className="text-lg font-bold text-purple-400 capitalize">{room.status}</p>
+                </div>
               </div>
-              <p className="text-sm text-blue-400 font-medium">Listening and transcribing...</p>
             </div>
-          </div>
+          ) : (
+            /* Активная встреча — Media & AI */
+            <>
+              <div className="absolute inset-0 flex items-center justify-center opacity-5 pointer-events-none">
+                <Mic className="w-96 h-96" />
+              </div>
+              <div className="max-w-2xl w-full bg-gray-800/50 border border-gray-700 border-dashed rounded-2xl p-12 text-center backdrop-blur-sm">
+                <h2 className="text-2xl font-bold text-gray-300 mb-4">Media & AI Processing Area</h2>
+                <p className="text-gray-400 mb-6">
+                  This space is reserved for the second student's module. 
+                  It will contain WebRTC audio streams, active speaker visualization, 
+                  and real-time STT (Speech-to-Text) transcriptions.
+                </p>
+                <div className="flex flex-col items-center">
+                  <div className="flex justify-center space-x-4 mb-4">
+                    <div className="h-3 w-12 bg-blue-500 rounded-full animate-pulse"></div>
+                    <div className="h-3 w-16 bg-blue-400 rounded-full animate-pulse delay-75"></div>
+                    <div className="h-3 w-8 bg-blue-600 rounded-full animate-pulse delay-150"></div>
+                  </div>
+                  <p className="text-sm text-blue-400 font-medium">Listening and transcribing...</p>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Right Sidebar: Chat */}
@@ -519,50 +550,63 @@ export default function Room() {
         )}
       </div>
 
-      {/* Bottom Control Bar */}
-      <div className="h-20 bg-gray-800 border-t border-gray-700 flex items-center justify-center px-6 shrink-0 space-x-4">
-        <button 
-          onClick={() => setIsMuted(!isMuted)}
-          className={`p-4 rounded-full flex items-center justify-center transition-colors ${isMuted ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-white'}`}
-        >
-          {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
-        </button>
-        
-        <button 
-          onClick={toggleHand}
-          className={`p-4 rounded-full flex items-center justify-center transition-colors ${isHandRaised ? 'bg-yellow-500 hover:bg-yellow-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-white'}`}
-        >
-          <Hand className="w-6 h-6" />
-        </button>
-
-        <button className="p-4 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors">
-          <Settings className="w-6 h-6" />
-        </button>
-        
-        <button className="p-4 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors">
-          <Share className="w-6 h-6" />
-        </button>
-        
-        <button className="p-4 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors">
-          <MoreVertical className="w-6 h-6" />
-        </button>
-
-        <div className="w-px h-8 bg-gray-600 mx-2"></div>
-
-        <button 
-          onClick={handleLeave}
-          className="px-6 py-3 rounded-full bg-red-600 hover:bg-red-700 text-white font-medium flex items-center space-x-2 transition-colors"
-        >
-          <PhoneOff className="w-5 h-5" />
-          <span>Leave</span>
-        </button>
-         {room?.creator_id === currentUser?.id && (
-          <button onClick={handleEndMeeting} className="px-6 py-3 rounded-full bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 font-medium flex items-center space-x-2 transition-colors">
-            <AlertTriangle className="w-5 h-5" />
-            <span>End Meeting</span>
+      {/* Bottom Control Bar — только для активных встреч */}
+      {(room?.status !== 'ended' && room?.status !== 'archived') ? (
+        <div className="h-20 bg-gray-800 border-t border-gray-700 flex items-center justify-center px-6 shrink-0 space-x-4">
+          <button 
+            onClick={() => setIsMuted(!isMuted)}
+            className={`p-4 rounded-full flex items-center justify-center transition-colors ${isMuted ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-white'}`}
+          >
+            {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
           </button>
-        )}
-      </div>
+          
+          <button 
+            onClick={toggleHand}
+            className={`p-4 rounded-full flex items-center justify-center transition-colors ${isHandRaised ? 'bg-yellow-500 hover:bg-yellow-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-white'}`}
+          >
+            <Hand className="w-6 h-6" />
+          </button>
+
+          <button className="p-4 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors">
+            <Settings className="w-6 h-6" />
+          </button>
+          
+          <button className="p-4 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors">
+            <Share className="w-6 h-6" />
+          </button>
+          
+          <button className="p-4 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors">
+            <MoreVertical className="w-6 h-6" />
+          </button>
+
+          <div className="w-px h-8 bg-gray-600 mx-2"></div>
+
+          <button 
+            onClick={handleLeave}
+            className="px-6 py-3 rounded-full bg-red-600 hover:bg-red-700 text-white font-medium flex items-center space-x-2 transition-colors"
+          >
+            <PhoneOff className="w-5 h-5" />
+            <span>Leave</span>
+          </button>
+          {room?.creator_id === currentUser?.id && (
+            <button onClick={handleEndMeeting} className="px-6 py-3 rounded-full bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 font-medium flex items-center space-x-2 transition-colors">
+              <AlertTriangle className="w-5 h-5" />
+              <span>End Meeting</span>
+            </button>
+          )}
+        </div>
+      ) : (
+        /* Для завершённых встреч — только кнопка назад */
+        <div className="h-20 bg-gray-800 border-t border-gray-700 flex items-center justify-center px-6 shrink-0">
+          <button 
+            onClick={() => navigate('/dashboard')}
+            className="px-6 py-3 rounded-full bg-gray-700 hover:bg-gray-600 text-white font-medium flex items-center space-x-2 transition-colors"
+          >
+            <PhoneOff className="w-5 h-5" />
+            <span>Back to Dashboard</span>
+          </button>
+        </div>
+      )}
 
       <ProtocolViewer 
         isOpen={isProtocolViewerOpen} 

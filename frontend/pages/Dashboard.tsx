@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Users, Clock, PlayCircle, Archive, Loader2, AlertCircle, MoreVertical, Edit, Copy, Trash2, ArchiveIcon, Mail } from 'lucide-react';
+import { Plus, Users, Clock, PlayCircle, Archive, Loader2, AlertCircle, MoreVertical, Edit, Copy, Trash2, ArchiveIcon, Mail, CheckCircle2, Calendar } from 'lucide-react';
 import { RoomResponse, RoomStatus } from '../types.ts';
 import RoomModal from '../components/RoomModal.tsx';
 import Sidebar from '../components/Sidebar.tsx';
@@ -50,12 +50,13 @@ export default function Dashboard() {
     navigate(`/room/${roomId}`);
   };
 
-  const handleCreateRoom = async (data: { name: string; description: string; scheduledStartAt: string; maxParticipants: number }) => {
+  const handleCreateRoom = async (data: any) => {
     try {
       await api.rooms.create({
         name: data.name,
         description: data.description,
-        scheduledStartAt: data.scheduledStartAt ? new Date(data.scheduledStartAt).toISOString() : undefined,
+        // scheduled_start_at: data.scheduledStartAt ? new Date(data.scheduledStartAt).toISOString() : undefined,
+        scheduled_start_at: data.scheduled_start_at || undefined,
         maxParticipants: data.maxParticipants
       });
       setIsCreateModalOpen(false);
@@ -66,13 +67,14 @@ export default function Dashboard() {
     }
   };
 
-  const handleEditRoom = async (data: { name: string; description: string; scheduledStartAt: string; maxParticipants: number }) => {
+  const handleEditRoom = async (data: any) => {
     if (!editingRoom) return;
     try {
       await api.rooms.update(editingRoom.id, {
         name: data.name,
         description: data.description,
-        scheduledStartAt: data.scheduledStartAt ? new Date(data.scheduledStartAt).toISOString() : undefined,
+        // scheduled_start_at: data.scheduledStartAt ? new Date(data.scheduledStartAt).toISOString() : undefined,
+        scheduled_start_at: data.scheduled_start_at || undefined,
       });
       setEditingRoom(null);
       fetchRooms();
@@ -134,6 +136,7 @@ export default function Dashboard() {
           <button onClick={() => setFilter('all')} className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${filter === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>All</button>
           <button onClick={() => setFilter(RoomStatus.ACTIVE)} className={`px-4 py-2 rounded-full text-sm font-medium transition-colors flex items-center ${filter === RoomStatus.ACTIVE ? 'bg-green-100 text-green-800 border border-green-200' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}><PlayCircle className="w-4 h-4 mr-1.5"/> Active</button>
           <button onClick={() => setFilter(RoomStatus.SCHEDULED)} className={`px-4 py-2 rounded-full text-sm font-medium transition-colors flex items-center ${filter === RoomStatus.SCHEDULED ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}><Clock className="w-4 h-4 mr-1.5"/> Scheduled</button>
+          <button onClick={() => setFilter(RoomStatus.ENDED)} className={`px-4 py-2 rounded-full text-sm font-medium transition-colors flex items-center ${filter === RoomStatus.ENDED ? 'bg-purple-100 text-purple-800 border border-purple-200' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}><CheckCircle2 className="w-4 h-4 mr-1.5"/> Ended</button>
           <button onClick={() => setFilter(RoomStatus.ARCHIVED)} className={`px-4 py-2 rounded-full text-sm font-medium transition-colors flex items-center ${filter === RoomStatus.ARCHIVED ? 'bg-gray-800 text-white border border-gray-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}><Archive className="w-4 h-4 mr-1.5"/> Archived</button>
         </div>
 
@@ -171,6 +174,7 @@ export default function Dashboard() {
                       <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                         room.status === RoomStatus.ACTIVE ? 'bg-green-100 text-green-800 border border-green-200' :
                         room.status === RoomStatus.SCHEDULED ? 'bg-blue-100 text-blue-800 border border-blue-200' :
+                        room.status === RoomStatus.ENDED ? 'bg-purple-100 text-purple-800 border border-purple-200' :
                         room.status === RoomStatus.ARCHIVED ? 'bg-gray-100 text-gray-600 border border-gray-200' :
                         'bg-gray-100 text-gray-800 border border-gray-200'
                       }`}>
@@ -178,7 +182,17 @@ export default function Dashboard() {
                       </span>
                       
                       {canManage && (
-                        <div className="relative">
+                        <div className="relative flex items-center space-x-1">
+                          {/* Кнопка Edit для scheduled */}
+                          {room.status === RoomStatus.SCHEDULED && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setEditingRoom(room); }}
+                              className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                              title="Edit meeting"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                          )}
                           <button 
                             onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === room.id ? null : room.id); }}
                             className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
@@ -186,13 +200,15 @@ export default function Dashboard() {
                             <MoreVertical className="w-4 h-4" />
                           </button>
                           
-                          {openMenuId === room.id && room.status !== RoomStatus.ARCHIVED && (
+                          {openMenuId === room.id && (
                             <>
                               <div 
                                 className="fixed inset-0 z-40" 
                                 onClick={(e) => { e.stopPropagation(); setOpenMenuId(null); }}
                               />
                               <div className="absolute right-0 top-8 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                                {room.status !== RoomStatus.ENDED && room.status !== RoomStatus.ARCHIVED && (
+                                  <>
                                 <button
                                   onClick={() => { setInviteRoom({ id: room.id, name: room.name }); setOpenMenuId(null); }}
                                   className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
@@ -205,12 +221,16 @@ export default function Dashboard() {
                                 >
                                   <Copy className="w-4 h-4" /> <span>Copy Invite Link</span>
                                 </button>
-                                <button
-                                  onClick={() => { handleArchiveRoom(room.id); setOpenMenuId(null); }}
-                                  className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                                >
-                                  <ArchiveIcon className="w-4 h-4" /> <span>Archive</span>
-                                </button>
+                                </>
+                                )}
+                                {(room.status === RoomStatus.SCHEDULED || room.status === RoomStatus.ENDED) && (
+                                  <button
+                                    onClick={() => { handleArchiveRoom(room.id); setOpenMenuId(null); }}
+                                    className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                  >
+                                    <ArchiveIcon className="w-4 h-4" /> <span>Archive</span>
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => { handleDeleteRoom(room.id); setOpenMenuId(null); }}
                                   className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
@@ -224,7 +244,33 @@ export default function Dashboard() {
                       )}
                     </div>
                   </div>
-                  <p className="text-gray-500 text-sm mb-6 flex-1 line-clamp-2">{room.description || 'No description provided.'}</p>
+                  <p className="text-gray-500 text-sm mb-2 flex-1 line-clamp-2">{room.description || 'No description provided.'}</p>
+
+                  {/* Дата и время */}
+                  <div className="flex items-center text-xs text-gray-400 mb-4 space-x-1">
+                    <Calendar className="w-3 h-3 shrink-0" />
+                    {room.status === RoomStatus.SCHEDULED && room.scheduled_start_at && (
+                      <span>{new Date(room.scheduled_start_at).toLocaleDateString([], { day: 'numeric', month: 'short' })} · {new Date(room.scheduled_start_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    )}
+                    {room.status === RoomStatus.SCHEDULED && !room.scheduled_start_at && (
+                      <span>No date set</span>
+                    )}
+                    {room.status === RoomStatus.ACTIVE && room.started_at && (
+                      <span>Started {new Date(room.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    )}
+                    {(room.status === RoomStatus.ENDED || room.status === RoomStatus.ARCHIVED) && room.started_at && (
+                      <span>{new Date(room.started_at).toLocaleDateString([], { day: 'numeric', month: 'short' })} · {new Date(room.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    )}
+                    {(room.status === RoomStatus.ENDED || room.status === RoomStatus.ARCHIVED) && room.ended_at && (
+                      <span className="text-gray-300 mx-1">→</span>
+                    )}
+                    {(room.status === RoomStatus.ENDED || room.status === RoomStatus.ARCHIVED) && room.ended_at && (
+                      <span>{new Date(room.ended_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    )}
+                    {(room.status === RoomStatus.ENDED || room.status === RoomStatus.ARCHIVED) && room.duration_seconds && (
+                      <span className="ml-1">({Math.floor(room.duration_seconds / 60)}m)</span>
+                    )}
+                  </div>
                   
                   <div className="flex items-center justify-between mt-auto pt-4 border-t border-gray-100">
                     <div className="flex items-center text-gray-500 text-sm bg-gray-50 px-2.5 py-1 rounded-md border border-gray-100">
@@ -236,12 +282,13 @@ export default function Dashboard() {
                       className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                         room.status === RoomStatus.ACTIVE
                           ? 'bg-green-600 text-white hover:bg-green-700 shadow-sm hover:shadow'
-                          : room.status === RoomStatus.ARCHIVED
+                          : room.status === RoomStatus.ENDED || room.status === RoomStatus.ARCHIVED
                             ? 'bg-gray-600 text-white hover:bg-gray-700'
                             : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-100'
                       }`}
                     >
                       {room.status === RoomStatus.ACTIVE ? 'Join Now' : 
+                      room.status === RoomStatus.ENDED ? 'View Results' :
                       room.status === RoomStatus.ARCHIVED ? 'View Protocol' : 'View Details'}
                     </button>
                   </div>

@@ -202,3 +202,20 @@ async def send_room_invite_email_with_ics(
                     logger.error(f"❌ [Email+ICS] All {MAX_RETRIES} attempts failed for {email}")
         
         await asyncio.sleep(BATCH_DELAY)
+        
+async def send_meeting_reminder_email(email: str, room_name: str, invite_code: str, start_time: datetime):
+    """Письмо-напоминание о скором начале встречи."""
+    join_url = f"{FRONTEND_URL}/#/join/{invite_code}"
+    time_str = start_time.strftime("%H:%M")
+    
+    html = f"""
+    <div style="font-family: sans-serif; max-width: 600px; margin: auto; border: 1px solid #e5e7eb; border-radius: 16px; padding: 40px;">
+        <h2 style="color: #2563eb;">⏰ Meeting Reminder</h2>
+        <p>Your meeting <b>{room_name}</b> starts at <b>{time_str}</b> (in 5 minutes).</p>
+        <div style="margin: 30px 0;">
+            <a href="{join_url}" style="background: #059669; color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px; font-weight: bold;">Join Meeting</a>
+        </div>
+        <p style="font-size: 12px; color: #9ca3af;">You're receiving this because you're a member of the organization.</p>
+    </div>
+    """
+    await send_email(email, f"Reminder: {room_name} starts in 5 minutes", html)

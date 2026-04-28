@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { api } from '../services/api.ts';
+import { RoomStatus } from '../types.ts';
 
 export default function JoinRoom() {
   const { inviteCode } = useParams();
@@ -24,10 +25,15 @@ export default function JoinRoom() {
       try {
         const response = await api.rooms.list(); 
         const room = response.rooms.find(r => r.invite_code === inviteCode);
-        
+
         if (room) {
+          if (room.status === RoomStatus.ENDED || room.status === RoomStatus.ARCHIVED) {
+            setError("This meeting has already ended.");
+            return;
+          }
           navigate(`/room/${room.id}`);
-        } else {
+        }
+        else {
           setError("Invalid or expired invite link. Please check the code.");
         }
       } catch (err: any) {

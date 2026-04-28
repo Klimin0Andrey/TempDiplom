@@ -103,6 +103,7 @@ class Room(Base):
     ended_at = Column(DateTime)
     duration_seconds = Column(Integer)
     chat_enabled = Column(Boolean, default=True, nullable=False)
+    reminder_sent = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
 

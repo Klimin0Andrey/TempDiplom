@@ -60,7 +60,7 @@ async def create_room(
         description=request.description,
         invite_code=invite_code,
         status=RoomStatusEnum.scheduled,
-        scheduled_start_at=request.scheduled_start_at,
+        scheduled_start_at=request.scheduled_start_at.replace(tzinfo=None) if request.scheduled_start_at else None,
     )
     db.add(new_room)
     await db.flush()
@@ -161,6 +161,9 @@ async def get_rooms(
             "creator_id": str(r.creator_id),
             "creator_name": creator_name,
             "scheduled_start_at": r.scheduled_start_at,
+            "started_at": r.started_at.isoformat() if r.started_at else None,
+            "ended_at": r.ended_at.isoformat() if r.ended_at else None,
+            "duration_seconds": r.duration_seconds,
             "participants_count": participants_count_map.get(r.id, 0),
             "created_at": r.created_at,
             "updated_at": r.updated_at,
@@ -302,6 +305,10 @@ async def invite_to_room_by_email(
     if not row: raise HTTPException(status_code=404, detail="Room not found")
     
     room, org_name = row
+    
+    if room.status in [RoomStatusEnum.ended, RoomStatusEnum.archived]:
+        raise HTTPException(status_code=400, detail="Cannot invite to ended or archived meetings")
+    
     inviter = f"{current_user.first_name} {current_user.last_name or ''}".strip()
 
     # Передаем org_name последним аргументом
@@ -334,7 +341,12 @@ async def invite_all_organization(
     )
     row = result.first()
     if not row: raise HTTPException(status_code=404, detail="Room not found")
+    
     room, org_name = row
+    
+    if room.status in [RoomStatusEnum.ended, RoomStatusEnum.archived]:
+        raise HTTPException(status_code=400, detail="Cannot invite to ended or archived meetings")
+    
 
     # Находим всех активных пользователей организации
     users_res = await db.execute(
@@ -359,13 +371,19 @@ async def update_room(
     current_user: models.User = Depends(get_current_active_user),
 ):
     room = await _get_room_with_permissions(room_id, db, current_user)
+    
+    if room.status != RoomStatusEnum.scheduled:
+        raise HTTPException(
+            status_code=400,
+            detail="Only scheduled meetings can be edited"
+        )
 
     if request.name is not None:
         room.name = request.name
     if request.description is not None:
         room.description = request.description
     if request.scheduled_start_at is not None:
-        room.scheduled_start_at = request.scheduled_start_at
+        room.scheduled_start_at = request.scheduled_start_at.replace(tzinfo=None)
 
     await db.commit()
     await db.refresh(room)
@@ -407,6 +425,8 @@ async def archive_room(
     current_user: models.User = Depends(get_current_active_user),
 ):
     room = await _get_room_with_permissions(room_id, db, current_user)
+    if room.status not in [RoomStatusEnum.scheduled, RoomStatusEnum.ended]:
+        raise HTTPException(status_code=400, detail="Only scheduled or ended meetings can be archived")
     room.status = RoomStatusEnum.archived
     await db.commit()
     return {"success": True, "message": "Room archived"}
@@ -441,7 +461,7 @@ async def end_meeting(
     if room.status == RoomStatusEnum.ended:
         return {"success": True, "message": "Already ended"}
         
-    room.status = RoomStatusEnum.archived
+    room.status = RoomStatusEnum.ended
     room.ended_at = datetime.utcnow()
     
     # Считаем длительность
