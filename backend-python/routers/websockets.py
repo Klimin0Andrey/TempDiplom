@@ -91,6 +91,23 @@ async def websocket_endpoint(
 
     # 3. Подключаем пользователя к комнате
     await manager.connect(websocket, room_id, user_id)
+    
+    # 3.1. Записываем в БД (если ещё нет записи)
+    async with AsyncSessionLocal() as db:
+        existing = await db.execute(
+            select(models.Participant).where(
+                models.Participant.room_id == room_id,
+                models.Participant.user_id == user_id,
+            )
+        )
+        if not existing.scalars().first():
+            db.add(models.Participant(
+                room_id=room_id,
+                user_id=user_id,
+                role_in_room="participant",
+                joined_at=datetime.utcnow(),
+            ))
+            await db.commit()
 
     # ЛОГИКА ТАЙМЕРА: Если комната запланирована, переводим в статус ACTIVE
     async with AsyncSessionLocal() as db:

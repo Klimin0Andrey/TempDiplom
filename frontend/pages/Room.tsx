@@ -277,13 +277,13 @@ const toggleMic = () => {
         // Загружаем участников из ответа API (для ended/archived комнат)
         if ((roomData.status === 'ended' || roomData.status === 'archived') && res.participants) {
           const loadedParticipants = res.participants
-            .filter((p: any) => p.userId !== currentUser?.id)
+            .filter((p: any) => (p.userId || p.user_id) !== currentUser?.id)
             .map((p: any) => ({
-              id: p.userId,
-              user_id: p.userId,
+              id: p.userId || p.user_id,
+              user_id: p.userId || p.user_id,
               username: p.name || 'Unknown',
               role_in_room: (p.roleInRoom || 'participant') as 'organizer' | 'participant',
-              is_muted: false,
+              is_muted: true,
               hand_raised: false,
               presence_status: 'idle' as const,
             }));
@@ -351,8 +351,7 @@ const toggleMic = () => {
     useEffect(() => {
       if (
         room &&
-        room.status !== 'ended' &&
-        room.status !== 'archived' &&
+        (room.status === 'scheduled' || room.status === 'active') &&
         wsConnectedRef.current &&
         participants.length > 0 &&
         !autoStartAttemptedRef.current
@@ -479,6 +478,7 @@ const toggleMic = () => {
     wsClient.on('ice-candidate', handleWebRTCSignal);
 
     const handleParticipantsList = (data: any) => {
+      if (room?.status === 'ended' || room?.status === 'archived') return;
       if (data.participants) {
         const list = data.participants
           .filter((p: any) => (p.user_id || p.userId) !== currentUser?.id)
@@ -705,7 +705,8 @@ const toggleMic = () => {
                 </div>
                 <div className="bg-gray-700/50 rounded-xl p-4">
                   <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Participants</p>
-                  <p className="text-2xl font-bold text-white">{room?.total_participants || (participants.length + 1)}</p>
+                  {/* total_participants — это общее кол-во уникальных людей за всё время из БД */}
+                  <p className="text-2xl font-bold text-white">{room?.total_participants || 0}</p>
                 </div>
                 <div className="bg-gray-700/50 rounded-xl p-4 col-span-2">
                   <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Status</p>

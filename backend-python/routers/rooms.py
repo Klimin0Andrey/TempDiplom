@@ -250,11 +250,11 @@ async def get_room_by_id(
         user = user_result.scalars().first()
         participants_list.append({
             "id": str(p.id),
-            "userId": str(p.user_id) if p.user_id else None,
+            "user_id": str(p.user_id) if p.user_id else None,
             "name": f"{user.first_name} {user.last_name or ''}".strip() if user else "Unknown",
-            "roleInRoom": p.role_in_room,
-            "joinedAt": p.joined_at.isoformat() if p.joined_at else None,
-            "leftAt": p.left_at.isoformat() if p.left_at else None,
+            "role_in_room": p.role_in_room,
+            "joined_at": p.joined_at.isoformat() if p.joined_at else None,
+            "left_at": p.left_at.isoformat() if p.left_at else None,
         })
 
     return {

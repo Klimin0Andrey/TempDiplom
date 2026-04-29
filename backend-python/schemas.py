@@ -94,6 +94,7 @@ class RoomResponse(BaseModel):
     ended_at: Optional[datetime] = None         # ← ДОБАВИТЬ
     duration_seconds: Optional[int] = None      # ← ДОБАВИТЬ
     participants_count: int = 0
+    total_participants: Optional[int] = None
     max_participants: Optional[int] = None
     is_recording: bool = False
     chat_enabled: bool = True
