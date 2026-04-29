@@ -46,6 +46,13 @@ export class SignalingClient {
       this.ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          
+          // Авто-ответ на ping
+          if (data.type === 'ping') {
+            this.send('pong', {});
+            return;
+          }
+          
           this.emit(data.type, data);
         } catch (e) {
           console.error('Failed to parse WS message', e);

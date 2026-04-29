@@ -13,41 +13,62 @@ from database import AsyncSessionLocal
 router = APIRouter(tags=["WebSockets"])
 
 
+import redis.asyncio as redis
+from database import REDIS_URL
+
 class ConnectionManager:
-    """Управляет WebSocket-соединениями, группируя их по комнатам."""
+    """Управляет WebSocket-соединениями через Redis."""
 
     def __init__(self):
-        # room_id -> list of (user_id, websocket)
-        self.active_connections: Dict[str, list] = {}
+        self.redis: redis.Redis | None = None
+        # Локальный словарь для WebSocket-объектов (их нельзя хранить в Redis)
+        self.ws_connections: Dict[str, Dict[str, WebSocket]] = {}
+
+    async def _ensure_redis(self):
+        if self.redis is None:
+            self.redis = redis.from_url(REDIS_URL, decode_responses=True)
 
     async def connect(self, websocket: WebSocket, room_id: str, user_id: str):
         await websocket.accept()
-        if room_id not in self.active_connections:
-            self.active_connections[room_id] =[]
-        self.active_connections[room_id].append((user_id, websocket))
+        await self._ensure_redis()
+        
+        # Храним WebSocket локально (нельзя сериализовать в Redis)
+        if room_id not in self.ws_connections:
+            self.ws_connections[room_id] = {}
+        self.ws_connections[room_id][user_id] = websocket
+        
+        # Храним presence в Redis
+        await self.redis.hset(f"active_rooms:{room_id}", user_id, "online")
 
-    def disconnect(self, room_id: str, websocket: WebSocket):
-        if room_id in self.active_connections:
-            self.active_connections[room_id] =[
-                (uid, ws) for (uid, ws) in self.active_connections[room_id]
-                if ws != websocket
-            ]
-            if not self.active_connections[room_id]:
-                del self.active_connections[room_id]
+    def disconnect(self, room_id: str, user_id: str):
+        # Удаляем локальный WebSocket
+        if room_id in self.ws_connections:
+            self.ws_connections[room_id].pop(user_id, None)
+            if not self.ws_connections[room_id]:
+                del self.ws_connections[room_id]
+        
+        # Удаляем из Redis (асинхронно, без await)
+        if self.redis:
+            async def _del():
+                await self.redis.hdel(f"active_rooms:{room_id}", user_id)
+            import asyncio
+            try:
+                asyncio.create_task(_del())
+            except Exception:
+                pass
 
     async def broadcast(self, room_id: str, message: dict, exclude_user: str = None):
-        if room_id in self.active_connections:
-            for uid, ws in self.active_connections[room_id]:
+        if room_id in self.ws_connections:
+            for uid, ws in list(self.ws_connections[room_id].items()):
                 if uid != exclude_user:
                     try:
                         await ws.send_json(message)
                     except Exception:
                         pass
 
-    def get_participants(self, room_id: str) -> list:
-        if room_id in self.active_connections:
-            return list(set(uid for uid, _ in self.active_connections[room_id]))
-        return[]
+    async def get_participants(self, room_id: str) -> list:
+        await self._ensure_redis()
+        return await self.redis.hkeys(f"active_rooms:{room_id}")
 
 
 manager = ConnectionManager()
@@ -108,6 +129,32 @@ async def websocket_endpoint(
                 joined_at=datetime.utcnow(),
             ))
             await db.commit()
+            
+    # 3.2. Создаём задачи для heartbeat
+    import asyncio as asyncio_module
+    
+    async def send_ping():
+        """Отправляем ping каждые 15 секунд."""
+        while True:
+            await asyncio_module.sleep(15)
+            try:
+                await websocket.send_json({"type": "ping"})
+            except Exception:
+                break
+
+    async def wait_pong():
+        """Ждём pong или дисконнектим через 30 секунд."""
+        while True:
+            await asyncio_module.sleep(30)
+            # Если за 30 секунд не получили pong — дисконнект
+            try:
+                await websocket.close(code=1002, reason="Ping timeout")
+                break
+            except Exception:
+                break
+
+    ping_task = asyncio_module.create_task(send_ping())
+    last_pong_ref = {"time": datetime.utcnow()}
 
     # ЛОГИКА ТАЙМЕРА: Если комната запланирована, переводим в статус ACTIVE
     async with AsyncSessionLocal() as db:
@@ -209,6 +256,10 @@ async def websocket_endpoint(
             data = await websocket.receive_text()
             message_data = json.loads(data)
             msg_type = message_data.get("type")
+            
+            if msg_type == "pong":
+                last_pong_ref["time"] = datetime.utcnow()
+                continue
 
             if msg_type == "chat":
                 new_id = str(uuid.uuid4())
@@ -266,17 +317,17 @@ async def websocket_endpoint(
                     "candidate": message_data.get("candidate"),
                 }
 
-                if target and room_id in manager.active_connections:
-                    for uid, ws in manager.active_connections[room_id]:
-                        if uid == target:
-                            try:
-                                await ws.send_json(signaling_msg)
-                            except Exception:
-                                pass
-                            break
+                if target and room_id in manager.ws_connections:
+                    ws = manager.ws_connections[room_id].get(target)
+                    if ws:
+                        try:
+                            await ws.send_json(signaling_msg)
+                        except Exception:
+                            pass
 
     except WebSocketDisconnect:
-        manager.disconnect(room_id, websocket)
+        ping_task.cancel()
+        manager.disconnect(room_id, user_id)
         await manager.broadcast(
             room_id,
             {
@@ -286,5 +337,6 @@ async def websocket_endpoint(
             },
         )
     except Exception as e:
+        ping_task.cancel()
         print(f"WebSocket error for user {user_id} in room {room_id}: {e}")
-        manager.disconnect(room_id, websocket)
+        manager.disconnect(room_id, user_id)

@@ -5,6 +5,7 @@ from sqlalchemy import text, select
 from dotenv import load_dotenv
 from database import engine, Base, get_db, AsyncSessionLocal
 from routers import auth, rooms, websockets, protocols
+from middleware.rate_limit import RateLimitMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import models
 from services.email import send_meeting_reminder_email
@@ -34,6 +35,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_middleware(RateLimitMiddleware, max_requests=100, window_seconds=60)
 
 app.include_router(auth.router)
 app.include_router(rooms.router)
@@ -100,8 +103,20 @@ async def shutdown():
 
 @app.get("/api/health")
 async def health_check(db: AsyncSession = Depends(get_db)):
+    from database import get_redis
+    result = {"database": "unknown", "redis": "unknown"}
     try:
         await db.execute(text("SELECT 1"))
         return {"status": "ok", "database": "connected"}
     except Exception as e:
         return {"status": "error", "database": str(e)}
+    
+    try:
+        async for r in get_redis():
+            await r.ping()
+            result["redis"] = "connected"
+    except Exception as e:
+        result["redis"] = str(e)
+    
+    status = "ok" if all(v == "connected" for v in result.values()) else "degraded"
+    return {"status": status, **result}
