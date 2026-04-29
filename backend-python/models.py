@@ -143,6 +143,8 @@ class ChatMessage(Base):
     message = Column(Text, nullable=False)
     reply_to_id = Column(UUID(as_uuid=True), ForeignKey('chat_messages.id', ondelete='SET NULL'))
     created_at = Column(DateTime, default=func.now(), nullable=False)
+    edited_at = Column(DateTime, nullable=True)
+    deleted_at = Column(DateTime, nullable=True)
 
 class Recording(Base):
     __tablename__ = 'recordings'

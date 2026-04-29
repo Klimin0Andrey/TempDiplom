@@ -166,6 +166,8 @@ export interface ChatMessage {
   mentions?: string[];
   isEdited?: boolean;
   isDeleted?: boolean;
+  deleted_at?: string;
+  edited_at?: string;
 }
 // ============================================
 // API Response Types (добавить в types.ts)

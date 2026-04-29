@@ -296,7 +296,52 @@ async def websocket_endpoint(
                     )
                     db.add(chat_message)
                     await db.commit()
-                    
+            
+            elif msg_type == "edit_chat":
+                message_id = message_data.get("messageId") or message_data.get("id")
+                new_message = message_data.get("message") or message_data.get("newMessage")
+                if message_id and new_message:
+                    async with AsyncSessionLocal() as db:
+                        result = await db.execute(
+                            select(models.ChatMessage).where(
+                                models.ChatMessage.id == message_id,
+                                models.ChatMessage.room_id == room_id,
+                                models.ChatMessage.user_id == user_id,
+                            )
+                        )
+                        msg = result.scalars().first()
+                        if msg:
+                            msg.message = new_message
+                            msg.edited_at = datetime.utcnow()
+                            await db.commit()
+                            await manager.broadcast(room_id, {
+                                "type": "chat_edited",
+                                "messageId": message_id,
+                                "message": new_message,
+                                "edited_at": msg.edited_at.isoformat() + "Z",
+                            })
+
+            elif msg_type == "delete_chat":
+                message_id = message_data.get("messageId") or message_data.get("id")
+                if message_id:
+                    async with AsyncSessionLocal() as db:
+                        result = await db.execute(
+                            select(models.ChatMessage).where(
+                                models.ChatMessage.id == message_id,
+                                models.ChatMessage.room_id == room_id,
+                            )
+                        )
+                        msg = result.scalars().first()
+                        if msg and str(msg.user_id) == user_id:
+                            msg.deleted_at = datetime.utcnow()
+                            msg.message = "[deleted]"
+                            await db.commit()
+                            await manager.broadcast(room_id, {
+                                "type": "chat_deleted",
+                                "messageId": message_id,
+                                "deleted_at": msg.deleted_at.isoformat() + "Z",
+                            })
+            
             elif msg_type == "presence":
                 presence_msg = {
                     "type": "presence",

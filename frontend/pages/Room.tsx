@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   Mic, MicOff, PhoneOff, Users, MessageSquare, 
-  Settings, Hand, Share, MoreVertical, Send, Info, FileText, Reply, X, Circle
+  Settings, Hand, Share, MoreVertical, Send, Info, FileText, Reply, X, Circle, Edit3, Trash2
 } from 'lucide-react';
 import { Participant, ChatMessage, ProtocolResponse, RoomResponse } from '../types.ts';
 import ProtocolViewer from '../components/ProtocolViewer.tsx';
@@ -53,6 +53,7 @@ export default function Room() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   
   const [replyingTo, setReplyTo] = useState<ChatMessage | null>(null);
+  const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
   const [isProtocolViewerOpen, setIsProtocolViewerOpen] = useState(false);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -778,12 +779,34 @@ const toggleMic = () => {
                         </span>
                       </div>
                       {room?.status !== 'ended' && room?.status !== 'archived' && (
-                        <button 
-                          onClick={() => setReplyTo(msg)}
-                          className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-white transition-opacity"
-                        >
-                          <Reply className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {msg.user_id === currentUser?.id && !msg.deleted_at && (
+                            <>
+                              <button 
+                                onClick={() => setEditingMessage(msg)}
+                                className="text-gray-400 hover:text-yellow-400"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                              <button 
+                                onClick={() => {
+                                  if (confirm('Delete message?')) {
+                                    wsClient.send('delete_chat', { messageId: msg.id });
+                                  }
+                                }}
+                                className="text-gray-400 hover:text-red-400"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          )}
+                          <button 
+                            onClick={() => setReplyTo(msg)}
+                            className="text-gray-400 hover:text-white"
+                          >
+                            <Reply className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       )}
                     </div>
                     
@@ -793,7 +816,40 @@ const toggleMic = () => {
                           {messages.find(m => m.id === msg.reply_to_id)?.message || 'Reply to a message'}
                         </div>
                       )}
-                      {msg.message}
+                      
+                      {editingMessage?.id === msg.id ? (
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="text"
+                            value={editingMessage.message}
+                            onChange={(e) => setEditingMessage({ ...editingMessage, message: e.target.value })}
+                            className="flex-1 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-white"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                wsClient.send('edit_chat', { messageId: msg.id, message: editingMessage.message });
+                                setEditingMessage(null);
+                              }
+                              if (e.key === 'Escape') setEditingMessage(null);
+                            }}
+                            autoFocus
+                          />
+                          <button onClick={() => {
+                            wsClient.send('edit_chat', { messageId: msg.id, message: editingMessage.message });
+                            setEditingMessage(null);
+                          }} className="text-green-400 hover:text-green-300">
+                            <Send className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => setEditingMessage(null)} className="text-gray-400 hover:text-gray-300">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          {msg.message}
+                          {msg.deleted_at && <span className="text-xs text-gray-500 italic ml-2">(deleted)</span>}
+                          {msg.edited_at && <span className="text-xs text-gray-500 italic ml-2">(edited)</span>}
+                        </>
+                      )}
                     </div>
                   </div>
                 );
