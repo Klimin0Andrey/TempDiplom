@@ -114,7 +114,7 @@ async def websocket_endpoint(
         {
             "type": "system",
             "message": f"{username} joined the meeting",
-            "userId": user_id,
+            "user_id": user_id,
             "username": username,
         },
         exclude_user=user_id,
@@ -160,30 +160,30 @@ async def websocket_endpoint(
             except Exception:
                 pass
         
-        # 5. Отправляем новому участнику список тех, кто уже в комнате
+        # 5. Отправляем ВСЕМ актуальный список участников (включая нового)
         participants_list = manager.get_participants(room_id)
         participants_info = []
         for pid in participants_list:
-            if pid != user_id:
-                async with AsyncSessionLocal() as db:
-                    u_result = await db.execute(
-                        select(models.User).where(models.User.id == pid)
-                    )
-                    u = u_result.scalars().first()
-                    p_name = f"{u.first_name} {u.last_name or ''}".strip() if u else "Unknown"
-                participants_info.append({
-                    "userId": pid,
-                    "username": p_name,
-                })
+            async with AsyncSessionLocal() as db:
+                u_result = await db.execute(
+                    select(models.User).where(models.User.id == pid)
+                )
+                u = u_result.scalars().first()
+                p_name = f"{u.first_name} {u.last_name or ''}".strip() if u else "Unknown"
+            participants_info.append({
+                "user_id": pid,
+                "username": p_name,
+                "is_muted": True,
+                "hand_raised": False,
+                "presence_status": "idle",
+            })
         
         if participants_info:
-            try:
-                await websocket.send_json({
-                    "type": "participants_list",
-                    "participants": participants_info,
-                })
-            except Exception:
-                pass
+            # Отправляем ВСЕМ в комнате (не только новому)
+            await manager.broadcast(room_id, {
+                "type": "participants_list",
+                "participants": participants_info,
+            })
         
         
     try:
@@ -199,7 +199,7 @@ async def websocket_endpoint(
                     "type": "chat",
                     "id": new_id,
                     "user_id": user_id,
-                    "userId": user_id,
+                    "user_id": user_id,
                     "username": username,
                     "message": message_data.get("message"),
                     "message_type": "text",
@@ -228,13 +228,14 @@ async def websocket_endpoint(
                     )
                     db.add(chat_message)
                     await db.commit()
-
+                    
             elif msg_type == "presence":
                 presence_msg = {
                     "type": "presence",
-                    "userId": user_id,
-                    "username": username,
+                    "user_id": user_id,
                     "status": message_data.get("status", "idle"),
+                    "is_muted": message_data.get("is_muted", False),
+                    "hand_raised": message_data.get("hand_raised", False),
                 }
                 await manager.broadcast(room_id, presence_msg, exclude_user=user_id)
 
@@ -264,7 +265,7 @@ async def websocket_endpoint(
             {
                 "type": "system",
                 "message": f"{username} left the meeting",
-                "userId": user_id,
+                "user_id": user_id,
             },
         )
     except Exception as e:

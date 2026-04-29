@@ -7,8 +7,8 @@ import {
 import { Participant, ChatMessage, ProtocolResponse, RoomResponse } from '../types.ts';
 import ProtocolViewer from '../components/ProtocolViewer.tsx';
 import ConnectionStatus from '../components/ConnectionStatus.tsx';
-import { wsClient } from '../services/websocket.ts';
 import { api } from '../services/api.ts';
+import { wsClient, ConnectionState } from '../services/websocket.ts';
 import { AlertTriangle } from 'lucide-react';
 
 const MOCK_PROTOCOL: ProtocolResponse = {
@@ -41,7 +41,7 @@ export default function Room() {
   const { roomId } = useParams();
   const navigate = useNavigate();
   
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const [isHandRaised, setIsHandRaised] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [showChat, setShowChat] = useState(true);
@@ -57,30 +57,242 @@ export default function Room() {
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   const [room, setRoom] = useState<RoomResponse | null>(null);
+
+  // ====== WebRTC Audio State ======
+  const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const localAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [audioConnected, setAudioConnected] = useState(false);
+  // ====== End WebRTC Audio State ======
   const [elapsedTime, setElapsedTime] = useState('00:00:00');
   const userStr = localStorage.getItem('user');
   const currentUser = userStr ? JSON.parse(userStr) : null;
 
+
+  // ====== WebRTC Audio Functions ======
+const startAudio = async () => {
+  console.log('🎤 startAudio() called at', new Date().toISOString());
+  // Проверка поддержки WebRTC
+  if (!window.RTCPeerConnection) {
+    alert('Your browser does not support WebRTC audio calls');
+    return;
+  }
+  
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    
+    // Создаём скрытый audio-элемент для локального мониторинга (muted)
+    localAudioRef.current = new Audio();
+    localAudioRef.current.srcObject = stream;
+    localAudioRef.current.muted = true;
+    localAudioRef.current.play().catch(() => {});
+    
+    // Создаём peer connection для каждого участника (только если участники уже есть)
+    if (participants.length > 0) {
+      participants.forEach(async (p) => {
+        if (p.user_id === currentUser?.id) return;
+        await createPeerConnection(p.user_id, stream);
+      });
+    }
+    
+    setAudioConnected(true);
+    wsClient.updatePresence('speaking');
+  } catch (err) {
+    console.error('Microphone access denied:', err);
+    alert('Please allow microphone access to use audio.');
+  }
+};
+
+const createPeerConnection = async (targetUserId: string, stream: MediaStream) => {
+  // Закрываем старое соединение если есть
+  const existing = peerConnections.current.get(targetUserId);
+  if (existing) existing.close();
+  
+  const pc = new RTCPeerConnection({
+    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+  });
+  
+  // Добавляем локальные аудиодорожки
+  stream.getTracks().forEach(track => {
+    pc.addTrack(track, stream);
+  });
+  
+  // При получении ICE-кандидата — отправляем через signalling
+  pc.onicecandidate = (event) => {
+    if (event.candidate) {
+      wsClient.send('ice-candidate', { 
+        target: targetUserId, 
+        candidate: event.candidate 
+      });
+    }
+  };
+  
+  // При получении удалённого аудиопотока — воспроизводим
+  pc.ontrack = (event) => {
+    const audio = new Audio();
+    audio.srcObject = event.streams[0];
+    audio.autoplay = true;
+    audio.play().catch(() => {});
+    wsClient.updatePresence('speaking');
+  };
+  
+  peerConnections.current.set(targetUserId, pc);
+  
+  // Создаём и отправляем offer
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  wsClient.send('offer', { target: targetUserId, sdp: pc.localDescription });
+  console.log('📤 Sent offer to:', targetUserId);
+};
+
+const handleWebRTCSignal = async (data: any) => {
+  console.log('📡 WebRTC SIGNAL received:', data.type, 'from:', data.from, 'sdp:', !!data.sdp, 'candidate:', !!data.candidate);
+  const { type, from, sdp, candidate } = data;
+  
+  try {
+    let pc: RTCPeerConnection | undefined = peerConnections.current.get(from);
+    
+    if (!pc && (type === 'offer' || type === 'answer')) {
+      console.log('🆕 Creating NEW peer connection for incoming call from:', from);
+      
+      // НЕ вызываем startAudio здесь — используем флаг ожидания
+      if (!localAudioRef.current?.srcObject && !audioConnected) {
+        console.warn('⚠️ No local audio stream yet, waiting for user to enable mic...');
+        // Не вызываем startAudio — пользователь сам включит микрофон
+        return; // Игнорируем сигнал, ждём когда пользователь включит микрофон
+      }
+      
+      const newPc = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      });
+      
+      newPc.onicecandidate = (event) => {
+        if (event.candidate) {
+          wsClient.send('ice-candidate', { target: from, candidate: event.candidate });
+        }
+      };
+      
+      newPc.oniceconnectionstatechange = () => {
+        console.log('🔗 ICE connection state:', newPc.iceConnectionState);
+      };
+      
+      newPc.ontrack = (event) => {
+        console.log('🔊 Received remote audio track from:', from);
+        const audio = new Audio();
+        audio.srcObject = event.streams[0];
+        audio.autoplay = true;
+        audio.play().then(() => {
+          console.log('✅ Remote audio playing');
+        }).catch((err) => {
+          console.error('❌ Audio play failed:', err);
+        });
+      };
+      
+      const stream = localAudioRef.current?.srcObject as MediaStream;
+      if (stream) {
+        stream.getTracks().forEach(track => {
+          newPc.addTrack(track, stream);
+        });
+      }
+      
+      peerConnections.current.set(from, newPc);
+      pc = newPc;
+    }
+    
+    if (!pc) {
+      console.log('⏭️ Skipping signal — no peer connection for:', from);
+      return;
+    }
+    
+    if (type === 'offer' && sdp) {
+      await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      wsClient.send('answer', { target: from, sdp: pc.localDescription });
+    } else if (type === 'answer' && sdp) {
+      await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+    } else if (type === 'ice-candidate' && candidate) {
+      if (pc.remoteDescription) {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      }
+      // Игнорируем ICE если нет remoteDescription — не буферизируем
+    }
+  } catch (err) {
+    console.error('❌ WebRTC signal error:', err);
+  }
+};
+
+const stopAudio = () => {
+  // Останавливаем локальный стрим
+  if (localAudioRef.current?.srcObject) {
+    const stream = localAudioRef.current.srcObject as MediaStream;
+    stream.getTracks().forEach(track => track.stop());
+    localAudioRef.current = null;
+  }
+  // Закрываем все peer connections
+  peerConnections.current.forEach(pc => pc.close());
+  peerConnections.current.clear();
+  setAudioConnected(false);
+};
+
+const toggleMic = () => {
+  if (!audioConnected) {
+    startAudio();
+    setIsMuted(false);
+    wsClient.send('presence', { status: 'speaking', is_muted: false, hand_raised: isHandRaised });
+  } else if (!isMuted) {
+    if (localAudioRef.current?.srcObject) {
+      const stream = localAudioRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => { track.enabled = false; });
+    }
+    setIsMuted(true);
+    wsClient.send('presence', { status: 'idle', is_muted: true, hand_raised: isHandRaised });
+  } else {
+    if (localAudioRef.current?.srcObject) {
+      const stream = localAudioRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => { track.enabled = true; });
+    }
+    setIsMuted(false);
+    wsClient.send('presence', { status: 'speaking', is_muted: false, hand_raised: isHandRaised });
+  }
+};
+// ====== End WebRTC Audio Functions ======
+
   // Загрузка данных комнаты
   useEffect(() => {
-      if (!roomId) return;
-      api.rooms.getById(roomId).then(res => {
-          const roomData = { ...res.room };
-          if (roomData.started_at) {
-              // Проверяем тип: если это объект (datetime из Pydantic) — конвертируем в строку
-              if (typeof roomData.started_at !== 'string') {
-                  roomData.started_at = new Date(roomData.started_at).toISOString();
-              }
-              // Добавляем Z если нужно
-              if (!roomData.started_at.endsWith('Z') && !roomData.started_at.includes('+')) {
-                  roomData.started_at += 'Z';
-              }
+    if (!roomId) return;
+    api.rooms.getById(roomId).then(res => {
+        const roomData = { ...res.room };
+        if (roomData.started_at) {
+            if (typeof roomData.started_at !== 'string') {
+                roomData.started_at = new Date(roomData.started_at).toISOString();
+            }
+            if (!roomData.started_at.endsWith('Z') && !roomData.started_at.includes('+')) {
+                roomData.started_at += 'Z';
+            }
+        }
+        console.log('Room started_at:', roomData.started_at);
+        console.log('ROOM DATA:', JSON.stringify(roomData, null, 2));
+        setRoom(roomData);
+        
+        // Загружаем участников из ответа API (для ended/archived комнат)
+        if ((roomData.status === 'ended' || roomData.status === 'archived') && res.participants) {
+          const loadedParticipants = res.participants
+            .filter((p: any) => p.userId !== currentUser?.id)
+            .map((p: any) => ({
+              id: p.userId,
+              user_id: p.userId,
+              username: p.name || 'Unknown',
+              role_in_room: (p.roleInRoom || 'participant') as 'organizer' | 'participant',
+              is_muted: false,
+              hand_raised: false,
+              presence_status: 'idle' as const,
+            }));
+          if (loadedParticipants.length > 0) {
+            setParticipants(loadedParticipants);
           }
-          console.log('Room started_at:', roomData.started_at); // для проверки
-          console.log('ROOM DATA:', JSON.stringify(roomData, null, 2));
-          setRoom(roomData);
-      }).catch(console.error);
-  }, [roomId]);
+        }
+    }).catch(console.error);
+}, [roomId]);
 
     // Таймер
     useEffect(() => {
@@ -116,6 +328,48 @@ export default function Room() {
         return () => clearInterval(interval);
     }, [room?.started_at, room?.status, room?.duration_seconds]);
 
+  // ====== АВТО-ЗАПУСК АУДИО ПОСЛЕ ГОТОВНОСТИ WS ======
+  const wsConnectedRef = useRef(false);
+  const autoStartAttemptedRef = useRef(false);
+
+  useEffect(() => {
+    wsConnectedRef.current = false;
+    autoStartAttemptedRef.current = false;
+
+    const unsubscribe = wsClient.onStateChange((state: ConnectionState) => {
+      // Убираем проверку room — он ещё null в этом замыкании
+      if (state === 'connected') {
+        wsConnectedRef.current = true;
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [roomId]);
+
+    useEffect(() => {
+      if (
+        room &&
+        room.status !== 'ended' &&
+        room.status !== 'archived' &&
+        wsConnectedRef.current &&
+        participants.length > 0 &&
+        !autoStartAttemptedRef.current
+      ) {
+        autoStartAttemptedRef.current = true;
+        console.log('🎯 Auto-starting audio with muted mic');
+        startAudio().then(() => {
+          if (localAudioRef.current?.srcObject) {
+            const stream = localAudioRef.current.srcObject as MediaStream;
+            stream.getTracks().forEach(track => { track.enabled = false; });
+          }
+        });
+      }
+    }, [room, participants]);
+  // ====== КОНЕЦ АВТО-ЗАПУСКА ======
+  
+
   // WebSocket Integration
   useEffect(() => {
     if (!roomId) return;
@@ -133,7 +387,7 @@ export default function Room() {
     const handleIncomingChat = (msg: ChatMessage) => {
         // Если username нет — попробуй взять из userId (для старых сообщений)
         if (!msg.username && msg.user_id) {
-            const participant = participants.find(p => p.userId === msg.user_id);
+            const participant = participants.find(p => p.user_id === msg.user_id);
             msg.username = participant?.username || 'User';
         }
         setMessages(prev => [...prev, msg]);
@@ -162,30 +416,39 @@ export default function Room() {
           return;
       }
 
+      // joined block
       if (data.message.includes('joined')) {
         setParticipants(prev => {
-          if (prev.find(p => p.userId === data.userId)) return prev;
+          if (prev.find(p => p.user_id === (data.user_id || data.userId))) return prev;
           return [...prev, {
-            id: data.userId,
-            userId: data.userId,
+            id: data.user_id || data.userId,
+            user_id: data.user_id || data.userId,
             username: data.username || 'User',
-            roleInRoom: 'participant',
-            isMuted: false,
-            handRaised: false,
-            presenceStatus: 'idle'
+            role_in_room: 'participant' as const,
+            is_muted: true,
+            hand_raised: false,
+            presence_status: 'idle' as const,
           }];
         });
-      } else if (data.message.includes('left')) {
-        setParticipants(prev => prev.filter(p => p.userId !== data.userId));
+        if (audioConnected && localAudioRef.current?.srcObject) {
+          createPeerConnection(data.user_id || data.userId, localAudioRef.current.srcObject as MediaStream);
+        }
+      }
+      // left block
+      else if (data.message.includes('left')) {
+        setParticipants(prev => prev.filter(p => p.user_id !== (data.user_id || data.userId)));
       }
     };
 
     const handlePresence = (data: any) => {
       setParticipants(prev => prev.map(p => {
-        if (p.userId === data.userId) {
-          if (data.status === 'hand_raised') return { ...p, handRaised: true };
-          if (data.status === 'idle') return { ...p, handRaised: false, presenceStatus: 'idle' };
-          return { ...p, presenceStatus: data.status };
+        if (p.user_id === data.user_id) {
+          return {
+            ...p,
+            presence_status: data.status || 'idle',
+            is_muted: data.is_muted ?? p.is_muted,
+            hand_raised: data.hand_raised ?? p.hand_raised,
+          };
         }
         return p;
       }));
@@ -211,27 +474,50 @@ export default function Room() {
     wsClient.on('system', handleSystem);
     wsClient.on('presence', handlePresence);
     wsClient.on('protocol_ready', handleProtocolReady);
+    wsClient.on('offer', handleWebRTCSignal);
+    wsClient.on('answer', handleWebRTCSignal);
+    wsClient.on('ice-candidate', handleWebRTCSignal);
 
     const handleParticipantsList = (data: any) => {
-      if (data.participants && Array.isArray(data.participants)) {
-        setParticipants(prev => {
-          const existing = new Set(prev.map(p => p.userId));
-          const newParticipants = data.participants
-            .filter((p: any) => !existing.has(p.userId))
-            .map((p: any) => ({
-              id: p.userId,
-              userId: p.userId,
-              username: p.username || 'User',
-              roleInRoom: 'participant' as const,
-              isMuted: false,
-              handRaised: false,
-              presenceStatus: 'idle' as const,
-            }));
-          return [...prev, ...newParticipants];
-        });
+      if (data.participants) {
+        const list = data.participants
+          .filter((p: any) => (p.user_id || p.userId) !== currentUser?.id)
+          .map((p: any) => ({
+            id: p.user_id || p.userId,
+            user_id: p.user_id || p.userId,
+            username: p.username || 'User',
+            role_in_room: 'participant' as const,
+            is_muted: p.is_muted ?? true,
+            hand_raised: p.hand_raised ?? false,
+            presence_status: p.presence_status || 'idle',
+          }));
+        setParticipants(list);
       }
     };
 
+    // Добавьте эту функцию перед wsClient.on
+    // const handleParticipantsResponse = (data: any) => {
+    //   console.log('📋 Participants response:', data);
+    //   if (data.participants && Array.isArray(data.participants)) {
+    //     setParticipants(prev => {
+    //       const existing = new Set(prev.map(p => p.userId));
+    //       const newParticipants = data.participants
+    //         .filter((p: any) => !existing.has(p.userId))
+    //         .map((p: any) => ({
+    //           id: p.userId,
+    //           userId: p.userId,
+    //           username: p.username || 'User',
+    //           roleInRoom: 'participant' as const,
+    //           isMuted: false,
+    //           handRaised: false,
+    //           presenceStatus: 'idle' as const,
+    //         }));
+    //       return [...prev, ...newParticipants];
+    //     });
+    //   }
+    // };
+
+    
     wsClient.on('participants_list', handleParticipantsList);
 
     return () => {
@@ -242,6 +528,10 @@ export default function Room() {
       wsClient.off('protocol_ready', handleProtocolReady);
       wsClient.off('participants_list', handleParticipantsList);
       wsClient.disconnect();
+      wsClient.off('offer', handleWebRTCSignal);
+      wsClient.off('answer', handleWebRTCSignal);
+      wsClient.off('ice-candidate', handleWebRTCSignal);
+      stopAudio();
     };
   }, [roomId, navigate]);
 
@@ -372,28 +662,28 @@ export default function Room() {
               </div>
 
               {/* Remote Participants */}
-              {participants.filter(p => p.userId !== currentUser?.id).map(p => (
+              {participants.filter(p => p.user_id !== currentUser?.id).map(p => (
                 <div key={p.id} className="flex items-center justify-between p-2 rounded-md hover:bg-gray-700 group">
                   <div className="flex items-center space-x-3 overflow-hidden">
                     <div className="relative">
                       <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-sm font-bold">
                         {p.username.charAt(0).toUpperCase()}
                       </div>
-                      {p.presenceStatus === 'speaking' && (
+                      {p.presence_status === 'speaking' && (
                         <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-green-500 border-2 border-gray-800 rounded-full"></span>
                       )}
                     </div>
                     <div className="flex flex-col">
                       <span className="text-sm truncate">{p.username}</span>
-                      {p.presenceStatus === 'typing' && (
+                      {p.presence_status === 'typing' && (
                         <span className="text-[10px] text-blue-400 italic">typing...</span>
                       )}
                     </div>
                   </div>
                   {(room?.status !== 'ended' && room?.status !== 'archived') && (
                     <div className="flex items-center space-x-1 text-gray-400">
-                      {p.handRaised && <Hand className="w-4 h-4 text-yellow-500" />}
-                      {p.isMuted ? <MicOff className="w-4 h-4 text-red-400" /> : <Mic className="w-4 h-4 text-green-400" />}
+                      {p.hand_raised && <Hand className="w-4 h-4 text-yellow-500" />}
+                      {p.is_muted ? <MicOff className="w-4 h-4 text-red-400" /> : <Mic className="w-4 h-4 text-green-400" />}
                     </div>
                   )}
                 </div>
@@ -415,7 +705,7 @@ export default function Room() {
                 </div>
                 <div className="bg-gray-700/50 rounded-xl p-4">
                   <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Participants</p>
-                  <p className="text-2xl font-bold text-white">{participants.length + 1}</p>
+                  <p className="text-2xl font-bold text-white">{room?.total_participants || (participants.length + 1)}</p>
                 </div>
                 <div className="bg-gray-700/50 rounded-xl p-4 col-span-2">
                   <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Status</p>
@@ -553,34 +843,49 @@ export default function Room() {
       {/* Bottom Control Bar — только для активных встреч */}
       {(room?.status !== 'ended' && room?.status !== 'archived') ? (
         <div className="h-20 bg-gray-800 border-t border-gray-700 flex items-center justify-center px-6 shrink-0 space-x-4">
+          
+          {/* Кнопка микрофона — единая: выкл / вкл / muted */}
           <button 
-            onClick={() => setIsMuted(!isMuted)}
-            className={`p-4 rounded-full flex items-center justify-center transition-colors ${isMuted ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-white'}`}
+            onClick={toggleMic}
+            className={`p-4 rounded-full flex items-center justify-center transition-colors ${
+              !audioConnected 
+                ? 'bg-gray-700 hover:bg-gray-600 text-white' 
+                : isMuted 
+                  ? 'bg-red-500 hover:bg-red-600 text-white' 
+                  : 'bg-green-500 hover:bg-green-600 text-white'
+            }`}
+            title={!audioConnected ? 'Turn on microphone' : isMuted ? 'Unmute' : 'Mute'}
           >
-            {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+            {!audioConnected ? <MicOff className="w-6 h-6" /> : isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
           </button>
           
+          {/* Поднять руку */}
           <button 
             onClick={toggleHand}
             className={`p-4 rounded-full flex items-center justify-center transition-colors ${isHandRaised ? 'bg-yellow-500 hover:bg-yellow-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-white'}`}
+            title={isHandRaised ? 'Lower hand' : 'Raise hand'}
           >
             <Hand className="w-6 h-6" />
           </button>
 
-          <button className="p-4 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors">
+          {/* Настройки */}
+          <button className="p-4 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors" title="Settings">
             <Settings className="w-6 h-6" />
           </button>
           
-          <button className="p-4 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors">
+          {/* Поделиться */}
+          <button className="p-4 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors" title="Share">
             <Share className="w-6 h-6" />
           </button>
           
-          <button className="p-4 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors">
+          {/* Ещё */}
+          <button className="p-4 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors" title="More">
             <MoreVertical className="w-6 h-6" />
           </button>
 
           <div className="w-px h-8 bg-gray-600 mx-2"></div>
 
+          {/* Покинуть */}
           <button 
             onClick={handleLeave}
             className="px-6 py-3 rounded-full bg-red-600 hover:bg-red-700 text-white font-medium flex items-center space-x-2 transition-colors"
@@ -588,6 +893,8 @@ export default function Room() {
             <PhoneOff className="w-5 h-5" />
             <span>Leave</span>
           </button>
+          
+          {/* Завершить встречу (только организатор) */}
           {room?.creator_id === currentUser?.id && (
             <button onClick={handleEndMeeting} className="px-6 py-3 rounded-full bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 font-medium flex items-center space-x-2 transition-colors">
               <AlertTriangle className="w-5 h-5" />

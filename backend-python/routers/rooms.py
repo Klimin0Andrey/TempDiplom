@@ -233,13 +233,29 @@ async def get_room_by_id(
         else "Organizer"
     )
 
+        # Получаем ВСЕХ участников (не только активных)
     part_result = await db.execute(
         select(models.Participant).where(
             models.Participant.room_id == room_id,
-            models.Participant.left_at.is_(None),
         )
     )
-    participants = part_result.scalars().all()
+    all_participants = part_result.scalars().all()
+
+    # Формируем список участников с именами
+    participants_list = []
+    for p in all_participants:
+        user_result = await db.execute(
+            select(models.User).where(models.User.id == p.user_id)
+        )
+        user = user_result.scalars().first()
+        participants_list.append({
+            "id": str(p.id),
+            "userId": str(p.user_id) if p.user_id else None,
+            "name": f"{user.first_name} {user.last_name or ''}".strip() if user else "Unknown",
+            "roleInRoom": p.role_in_room,
+            "joinedAt": p.joined_at.isoformat() if p.joined_at else None,
+            "leftAt": p.left_at.isoformat() if p.left_at else None,
+        })
 
     return {
         "success": True,
@@ -256,15 +272,15 @@ async def get_room_by_id(
             "started_at": room.started_at.isoformat() if room.started_at else None,
             "ended_at": room.ended_at.isoformat() if room.ended_at else None,
             "duration_seconds": room.duration_seconds,
-            "participants_count": len(participants),
+            "participants_count": len([p for p in all_participants if p.left_at is None]),
+            "total_participants": len(all_participants),
             "chat_enabled": room.chat_enabled,
             "created_at": room.created_at,
             "updated_at": room.updated_at,
         },
-        "participants": [],
+        "participants": participants_list,
         "protocols": [],
     }
-
 
 # 4. ИСТОРИЯ ЧАТА
 @router.get("/{room_id}/messages")

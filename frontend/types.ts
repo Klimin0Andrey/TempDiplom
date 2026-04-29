@@ -63,6 +63,7 @@ export interface RoomResponse {
   chat_enabled: boolean;
   participants_count: number;
   max_participants?: number;
+  total_participants?: number;
   created_at: string;
   updated_at: string;
 }
@@ -145,12 +146,12 @@ export interface ProtocolResponse {
 
 export interface Participant {
   id: string;
-  userId: string;
+  user_id: string;
   username: string;
-  roleInRoom: 'organizer' | 'participant';
-  isMuted: boolean;
-  handRaised: boolean;
-  presenceStatus: PresenceStatus;
+  role_in_room: 'organizer' | 'participant';
+  is_muted: boolean;
+  hand_raised: boolean;
+  presence_status: PresenceStatus;
 }
 
 export interface ChatMessage {
