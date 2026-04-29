@@ -53,6 +53,35 @@ async def create_room(
 ):
     invite_code = generate_invite_code()
 
+    # ========== НОВАЯ ПРОВЕРКА ЛИМИТА КОМНАТ ==========
+    # Получаем организацию и её тариф
+    org = await db.get(models.Organization, current_user.organization_id)
+    if org and org.tier_id:
+        tier = await db.get(models.Tier, org.tier_id)
+        # Business план имеет безлимит, проверяем только для Light и Pro
+        if tier and tier.slug != "business":
+            # Начало текущего месяца
+            month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            
+            # Считаем количество комнат, созданных в этом месяце
+            room_count = await db.scalar(
+                select(func.count()).select_from(models.Room)
+                .where(
+                    models.Room.organization_id == current_user.organization_id,
+                    models.Room.created_at >= month_start,
+                )
+            )
+            
+            # Определяем лимит в зависимости от тарифа
+            max_rooms = 10 if tier.slug == "light" else 50 if tier.slug == "pro" else None
+            
+            if max_rooms and room_count >= max_rooms:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Monthly room limit reached ({max_rooms}) for {tier.name} plan. You've used {room_count} rooms this month."
+                )
+    # ========== КОНЕЦ ПРОВЕРКИ ==========
+
     new_room = models.Room(
         organization_id=current_user.organization_id,
         creator_id=current_user.id,
@@ -224,9 +253,9 @@ async def get_room_by_id(
             "creator_id": str(room.creator_id),
             "creator_name": creator_name,
             "scheduled_start_at": room.scheduled_start_at,
-            "started_at": room.started_at.isoformat() if room.started_at else None,  # ← ВОТ ЭТО ДОБАВЬ
-            "ended_at": room.ended_at.isoformat() if room.ended_at else None,          # ← И ЭТО ТОЖЕ
-            "duration_seconds": room.duration_seconds,                                 # ← И ЭТО
+            "started_at": room.started_at.isoformat() if room.started_at else None,
+            "ended_at": room.ended_at.isoformat() if room.ended_at else None,
+            "duration_seconds": room.duration_seconds,
             "participants_count": len(participants),
             "chat_enabled": room.chat_enabled,
             "created_at": room.created_at,

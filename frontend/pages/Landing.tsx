@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mic, FileText, Users, Shield, Zap, CheckCircle2, ArrowRight } from 'lucide-react';
+import { Mic, FileText, Users, Shield, CheckCircle2, ArrowRight, XCircle } from 'lucide-react';
 
 export default function Landing() {
   const navigate = useNavigate();
@@ -54,11 +54,6 @@ export default function Landing() {
                 <span>Start for Free</span>
                 <ArrowRight className="w-5 h-5" />
               </button>
-              <button 
-                className="w-full sm:w-auto flex items-center justify-center space-x-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-8 py-3.5 rounded-xl text-lg font-medium transition-all shadow-sm"
-              >
-                <span>View Demo</span>
-              </button>
             </div>
           </div>
         </div>
@@ -105,21 +100,45 @@ export default function Landing() {
             <p className="mt-4 text-lg text-gray-600">Choose the plan that best fits your organization's needs.</p>
           </div>
           <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+            
             {/* Light Tier */}
-            <div className="bg-white rounded-3xl shadow-sm border border-gray-200 p-8 flex flex-col">
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-200 p-8 flex flex-col hover:shadow-md transition-shadow">
               <h3 className="text-xl font-bold text-gray-900 mb-2">Light</h3>
               <p className="text-gray-500 text-sm mb-6">Perfect for small teams getting started.</p>
               <div className="mb-6">
-                <span className="text-4xl font-extrabold text-gray-900">$0</span>
-                <span className="text-gray-500">/month</span>
+                <span className="text-4xl font-extrabold text-gray-900">Free</span>
+                <span className="text-gray-500"> forever</span>
               </div>
-              <ul className="space-y-4 mb-8 flex-1">
-                <li className="flex items-center text-gray-600"><CheckCircle2 className="w-5 h-5 text-green-500 mr-3 shrink-0" /> Up to 10 users</li>
-                <li className="flex items-center text-gray-600"><CheckCircle2 className="w-5 h-5 text-green-500 mr-3 shrink-0" /> Unlimited audio calls</li>
-                <li className="flex items-center text-gray-600"><CheckCircle2 className="w-5 h-5 text-green-500 mr-3 shrink-0" /> Basic text chat</li>
-                <li className="flex items-center text-gray-400"><CheckCircle2 className="w-5 h-5 text-gray-300 mr-3 shrink-0" /> No AI features</li>
+              <ul className="space-y-3 mb-8 flex-1">
+                <li className="flex items-center text-gray-600">
+                  <CheckCircle2 className="w-5 h-5 text-green-500 mr-3 shrink-0" /> 
+                  <span className="font-medium">5</span> users
+                </li>
+                <li className="flex items-center text-gray-600">
+                  <CheckCircle2 className="w-5 h-5 text-green-500 mr-3 shrink-0" /> 
+                  <span className="font-medium">10</span> rooms/month
+                </li>
+                <li className="flex items-center text-gray-600">
+                  <CheckCircle2 className="w-5 h-5 text-green-500 mr-3 shrink-0" /> 
+                  WebRTC audio & chat
+                </li>
+                <li className="flex items-center text-gray-600">
+                  <CheckCircle2 className="w-5 h-5 text-green-500 mr-3 shrink-0" /> 
+                  Calendar invites (.ics)
+                </li>
+                <li className="flex items-center text-gray-600">
+                  <CheckCircle2 className="w-5 h-5 text-green-500 mr-3 shrink-0" /> 
+                  AI Protocols (STT + LLM)
+                </li>
+                <li className="flex items-center text-gray-400">
+                  <XCircle className="w-5 h-5 text-gray-300 mr-3 shrink-0" /> 
+                  No recording storage
+                </li>
               </ul>
-              <button onClick={() => navigate('/login?mode=register')} className="w-full py-3 px-4 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl font-medium transition-colors">
+              <button 
+                onClick={() => navigate('/login?mode=register&plan=light')} 
+                className="w-full py-3 px-4 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl font-medium transition-colors"
+              >
                 Get Started
               </button>
             </div>
@@ -132,35 +151,81 @@ export default function Landing() {
               <h3 className="text-xl font-bold text-white mb-2">Pro</h3>
               <p className="text-blue-100 text-sm mb-6">For growing organizations needing AI power.</p>
               <div className="mb-6">
-                <span className="text-4xl font-extrabold text-white">$29.99</span>
-                <span className="text-blue-200">/month</span>
+                <span className="text-4xl font-extrabold text-white">2 999 ₽</span>
+                <span className="text-blue-200"> /month</span>
               </div>
-              <ul className="space-y-4 mb-8 flex-1">
-                <li className="flex items-center text-white"><CheckCircle2 className="w-5 h-5 text-blue-300 mr-3 shrink-0" /> Up to 100 users</li>
-                <li className="flex items-center text-white"><CheckCircle2 className="w-5 h-5 text-blue-300 mr-3 shrink-0" /> Auto-recording</li>
-                <li className="flex items-center text-white"><CheckCircle2 className="w-5 h-5 text-blue-300 mr-3 shrink-0" /> AI Transcriptions (STT)</li>
-                <li className="flex items-center text-white"><CheckCircle2 className="w-5 h-5 text-blue-300 mr-3 shrink-0" /> AI Summaries & Action Items</li>
+              <ul className="space-y-3 mb-8 flex-1">
+                <li className="flex items-center text-white">
+                  <CheckCircle2 className="w-5 h-5 text-blue-300 mr-3 shrink-0" /> 
+                  <span className="font-medium">30</span> users
+                </li>
+                <li className="flex items-center text-white">
+                  <CheckCircle2 className="w-5 h-5 text-blue-300 mr-3 shrink-0" /> 
+                  <span className="font-medium">50</span> rooms/month
+                </li>
+                <li className="flex items-center text-white">
+                  <CheckCircle2 className="w-5 h-5 text-blue-300 mr-3 shrink-0" /> 
+                  AI Protocols (STT + LLM)
+                </li>
+                <li className="flex items-center text-white">
+                  <CheckCircle2 className="w-5 h-5 text-blue-300 mr-3 shrink-0" /> 
+                  Meeting recording
+                </li>
+                <li className="flex items-center text-white">
+                  <CheckCircle2 className="w-5 h-5 text-blue-300 mr-3 shrink-0" /> 
+                  <span className="font-medium">30 days</span> storage
+                </li>
+                <li className="flex items-center text-white">
+                  <CheckCircle2 className="w-5 h-5 text-blue-300 mr-3 shrink-0" /> 
+                  Calendar invites (.ics)
+                </li>
               </ul>
-              <button onClick={() => navigate('/login?mode=register')} className="w-full py-3 px-4 bg-white text-blue-600 hover:bg-gray-50 rounded-xl font-bold transition-colors shadow-sm">
+              <button 
+                onClick={() => navigate('/login?mode=register&plan=pro')} 
+                className="w-full py-3 px-4 bg-white text-blue-600 hover:bg-gray-50 rounded-xl font-bold transition-colors shadow-sm"
+              >
                 Start Free Trial
               </button>
             </div>
 
             {/* Business Tier */}
-            <div className="bg-white rounded-3xl shadow-sm border border-gray-200 p-8 flex flex-col">
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-200 p-8 flex flex-col hover:shadow-md transition-shadow">
               <h3 className="text-xl font-bold text-gray-900 mb-2">Business</h3>
               <p className="text-gray-500 text-sm mb-6">For large enterprises with advanced needs.</p>
               <div className="mb-6">
-                <span className="text-4xl font-extrabold text-gray-900">$99.99</span>
-                <span className="text-gray-500">/month</span>
+                <span className="text-4xl font-extrabold text-gray-900">9 999 ₽</span>
+                <span className="text-gray-500"> /month</span>
               </div>
-              <ul className="space-y-4 mb-8 flex-1">
-                <li className="flex items-center text-gray-600"><CheckCircle2 className="w-5 h-5 text-green-500 mr-3 shrink-0" /> Up to 1000 users</li>
-                <li className="flex items-center text-gray-600"><CheckCircle2 className="w-5 h-5 text-green-500 mr-3 shrink-0" /> Everything in Pro</li>
-                <li className="flex items-center text-gray-600"><CheckCircle2 className="w-5 h-5 text-green-500 mr-3 shrink-0" /> Priority Support</li>
-                <li className="flex items-center text-gray-600"><CheckCircle2 className="w-5 h-5 text-green-500 mr-3 shrink-0" /> Custom Integrations</li>
+              <ul className="space-y-3 mb-8 flex-1">
+                <li className="flex items-center text-gray-600">
+                  <CheckCircle2 className="w-5 h-5 text-green-500 mr-3 shrink-0" /> 
+                  <span className="font-medium">100</span> users
+                </li>
+                <li className="flex items-center text-gray-600">
+                  <CheckCircle2 className="w-5 h-5 text-green-500 mr-3 shrink-0" /> 
+                  <span className="font-medium">Unlimited</span> rooms
+                </li>
+                <li className="flex items-center text-gray-600">
+                  <CheckCircle2 className="w-5 h-5 text-green-500 mr-3 shrink-0" /> 
+                  AI Protocols (STT + LLM)
+                </li>
+                <li className="flex items-center text-gray-600">
+                  <CheckCircle2 className="w-5 h-5 text-green-500 mr-3 shrink-0" /> 
+                  Meeting recording
+                </li>
+                <li className="flex items-center text-gray-600">
+                  <CheckCircle2 className="w-5 h-5 text-green-500 mr-3 shrink-0" /> 
+                  <span className="font-medium">90 days</span> storage
+                </li>
+                <li className="flex items-center text-gray-600">
+                  <CheckCircle2 className="w-5 h-5 text-green-500 mr-3 shrink-0" /> 
+                  Calendar invites (.ics)
+                </li>
               </ul>
-              <button onClick={() => navigate('/login?mode=register')} className="w-full py-3 px-4 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl font-medium transition-colors">
+              <button 
+                onClick={() => navigate('/login?mode=register&plan=business')} 
+                className="w-full py-3 px-4 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl font-medium transition-colors"
+              >
                 Contact Sales
               </button>
             </div>

@@ -1,10 +1,9 @@
 from datetime import timedelta
+import models
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func  # ← ДОБАВЛЯЕМ func
 import uuid
-
-
 
 from fastapi import BackgroundTasks
 from services.email import send_invite_email, send_reset_password_email
@@ -32,9 +31,25 @@ async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db))
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Organization name is required for registration",
         )
-
+   
     org_slug = request.org_name.lower().replace(" ", "-") + "-" + str(uuid.uuid4())[:8]
-    new_org = Organization(name=request.org_name, slug=org_slug)
+
+    # Подбираем тариф по slug
+    tier_result = await db.execute(
+        select(models.Tier).where(models.Tier.slug == request.tier_slug)
+    )
+    tier = tier_result.scalars().first()
+    if not tier:
+        tier_result = await db.execute(
+            select(models.Tier).where(models.Tier.slug == "light")
+        )
+        tier = tier_result.scalars().first()
+
+    new_org = Organization(
+        name=request.org_name,
+        slug=org_slug,
+        tier_id=tier.id if tier else None
+    )
     db.add(new_org)
     await db.flush()
 
@@ -159,6 +174,7 @@ async def refresh_token(
 
 @router.get("/me", response_model=UserResponse)
 async def get_me(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    
     org_res = await db.execute(select(Organization.name).where(Organization.id == current_user.organization_id))
     current_user.organization_name = org_res.scalar()
     return current_user
@@ -210,12 +226,32 @@ async def get_organization_users(
 @router.post("/invite", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def invite_user(
     request: UserInviteRequest,
-    background_tasks: BackgroundTasks, # Добавлено
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     if current_user.role not in [RoleEnum.owner, RoleEnum.admin]:
         raise HTTPException(status_code=403, detail="Only admin or owner can invite users")
+
+    # ========== НОВАЯ ПРОВЕРКА ЛИМИТА ПОЛЬЗОВАТЕЛЕЙ ==========
+    # Получаем организацию и её тариф
+    org = await db.get(Organization, current_user.organization_id)
+    if org and org.tier_id:
+        tier = await db.get(models.Tier, org.tier_id)
+        if tier:
+            # Считаем текущее количество пользователей в организации (активных + приглашенных)
+            user_count = await db.scalar(
+                select(func.count()).select_from(User)
+                .where(User.organization_id == current_user.organization_id)
+            )
+            
+            # Проверяем лимит (для business лимита нет)
+            if tier.max_users and user_count >= tier.max_users:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"User limit reached ({tier.max_users}) for {tier.name} plan. Please upgrade to add more users."
+                )
+    # ========== КОНЕЦ ПРОВЕРКИ ==========
 
     # Проверка на существование
     existing = await db.execute(select(User).where(User.email == request.email))

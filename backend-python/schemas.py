@@ -25,7 +25,8 @@ class UserBase(BaseModel):
 
 class RegisterRequest(UserBase):
     password: str
-    org_name: Optional[str] = None  # Если передано, создаем новую организацию
+    org_name: Optional[str] = None
+    tier_slug: Optional[str] = "light"  # light, pro, business
 
     # Валидатор пароля нужен только при регистрации (или смене пароля)
     @field_validator("password")
