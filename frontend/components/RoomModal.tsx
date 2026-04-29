@@ -6,35 +6,60 @@ interface RoomModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (data: any) => void;
-  room?: RoomResponse | null; // Если передано, значит это редактирование
+  room?: RoomResponse | null;
 }
+
+// Лимиты по тарифам
+const TIER_LIMITS: Record<string, number | null> = {
+  light: 5,
+  pro: 30,
+  business: null, // безлимит
+};
 
 export default function RoomModal({ isOpen, onClose, onSubmit, room }: RoomModalProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [scheduledStartAt, setScheduledStartAt] = useState('');
   const [maxParticipants, setMaxParticipants] = useState(50);
+  const [maxAllowed, setMaxAllowed] = useState<number | null>(null);
 
-  // Когда открываем модалку для редактирования, заполняем поля
+  // Определяем лимит по тарифу
+  useEffect(() => {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      // Получаем тариф из данных пользователя или организации
+      // Можно передавать через контекст или запрос API
+      // Пока берём из localStorage (если сохраняли при логине)
+      const orgTier = user.tier_slug || 'light'; // по умолчанию light
+      setMaxAllowed(TIER_LIMITS[orgTier] ?? null);
+      
+      // Устанавливаем начальное значение maxParticipants в пределах лимита
+      const limit = TIER_LIMITS[orgTier];
+      if (limit && maxParticipants > limit) {
+        setMaxParticipants(limit);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (room) {
       setName(room.name);
       setDescription(room.description || '');
-      // Преобразуем дату из ISO в формат для datetime-local
       if (room.scheduled_start_at) {
         const date = new Date(room.scheduled_start_at);
         const offset = date.getTimezoneOffset() * 60000;
         const localISOTime = new Date(date.getTime() - offset).toISOString().slice(0, 16);
         setScheduledStartAt(localISOTime);
       }
-      setMaxParticipants(room.max_participants || 50);
+      setMaxParticipants(room.max_participants || (maxAllowed || 50));
     } else {
       setName('');
       setDescription('');
       setScheduledStartAt('');
-      setMaxParticipants(50);
+      setMaxParticipants(maxAllowed || 50);
     }
-  }, [room, isOpen]);
+  }, [room, isOpen, maxAllowed]);
 
   if (!isOpen) return null;
 
@@ -43,7 +68,6 @@ export default function RoomModal({ isOpen, onClose, onSubmit, room }: RoomModal
     onSubmit({
       name,
       description,
-      // ВАЖНО: для бэкенда используем snake_case
       scheduled_start_at: scheduledStartAt ? new Date(scheduledStartAt).toISOString() : null,
       max_participants: maxParticipants
     });
@@ -97,10 +121,25 @@ export default function RoomModal({ isOpen, onClose, onSubmit, room }: RoomModal
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Max Participants</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Max Participants
+                {maxAllowed && (
+                  <span className="text-gray-400 font-normal ml-1">(max {maxAllowed})</span>
+                )}
+              </label>
               <input
-                type="number" value={maxParticipants}
-                onChange={(e) => setMaxParticipants(parseInt(e.target.value))}
+                type="number"
+                min={1}
+                max={maxAllowed || 100}
+                value={maxParticipants}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value);
+                  if (maxAllowed && val > maxAllowed) {
+                    setMaxParticipants(maxAllowed);
+                  } else {
+                    setMaxParticipants(val);
+                  }
+                }}
                 className="block w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
               />
             </div>

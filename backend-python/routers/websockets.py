@@ -225,7 +225,7 @@ async def websocket_endpoint(
                 pass
         
         # 5. Отправляем ВСЕМ актуальный список участников (включая нового)
-        participants_list = manager.get_participants(room_id)
+        participants_list = await manager.get_participants(room_id)
         participants_info = []
         for pid in participants_list:
             async with AsyncSessionLocal() as db:

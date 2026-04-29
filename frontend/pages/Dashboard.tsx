@@ -172,13 +172,17 @@ export default function Dashboard() {
                     <h3 className="font-bold text-lg text-gray-900 line-clamp-1 group-hover:text-blue-600 transition-colors">{room.name}</h3>
                     <div className="flex items-center space-x-2">
                       <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                        room.status === RoomStatus.ACTIVE ? 'bg-green-100 text-green-800 border border-green-200' :
-                        room.status === RoomStatus.SCHEDULED ? 'bg-blue-100 text-blue-800 border border-blue-200' :
-                        room.status === RoomStatus.ENDED ? 'bg-purple-100 text-purple-800 border border-purple-200' :
-                        room.status === RoomStatus.ARCHIVED ? 'bg-gray-100 text-gray-600 border border-gray-200' :
-                        'bg-gray-100 text-gray-800 border border-gray-200'
+                        room.status === RoomStatus.ACTIVE 
+                          ? 'bg-green-100 text-green-800 border border-green-300 shadow-sm' 
+                          : room.status === RoomStatus.SCHEDULED 
+                            ? 'bg-blue-100 text-blue-800 border border-blue-300 shadow-sm' 
+                            : room.status === RoomStatus.ENDED 
+                              ? 'bg-emerald-50 text-emerald-600 border border-emerald-200 shadow-sm'
+                              : room.status === RoomStatus.ARCHIVED 
+                                ? 'bg-slate-100 text-slate-500 border border-slate-200' 
+                                : 'bg-gray-100 text-gray-800 border border-gray-200'
                       }`}>
-                        {room.status}
+                        {room.status === RoomStatus.ARCHIVED ? 'ARCHIVED' : room.status}
                       </span>
                       
                       {canManage && (
@@ -247,28 +251,57 @@ export default function Dashboard() {
                   <p className="text-gray-500 text-sm mb-2 flex-1 line-clamp-2">{room.description || 'No description provided.'}</p>
 
                   {/* Дата и время */}
-                  <div className="flex items-center text-xs text-gray-400 mb-4 space-x-1">
+                  <div className="flex items-center text-xs text-gray-400 mb-4 space-x-1 flex-wrap gap-x-2">
                     <Calendar className="w-3 h-3 shrink-0" />
+                    
+                    {/* Для SCHEDULED */}
                     {room.status === RoomStatus.SCHEDULED && room.scheduled_start_at && (
-                      <span>{new Date(room.scheduled_start_at).toLocaleDateString([], { day: 'numeric', month: 'short' })} · {new Date(room.scheduled_start_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      <span>
+                        {new Date(room.scheduled_start_at).toLocaleDateString([], { 
+                          day: 'numeric', 
+                          month: 'short' 
+                        })} · {new Date(room.scheduled_start_at).toLocaleTimeString([], { 
+                          hour: '2-digit', 
+                          minute: '2-digit',
+                          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+                        })}
+                      </span>
                     )}
-                    {room.status === RoomStatus.SCHEDULED && !room.scheduled_start_at && (
-                      <span>No date set</span>
-                    )}
+                    
+                    {/* Для ACTIVE */}
                     {room.status === RoomStatus.ACTIVE && room.started_at && (
-                      <span>Started {new Date(room.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      <span>Started {new Date(room.started_at).toLocaleTimeString([], { 
+                        hour: '2-digit', 
+                        minute: '2-digit',
+                        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+                      })}</span>
                     )}
+                    
+                    {/* Для ENDED и ARCHIVED */}
                     {(room.status === RoomStatus.ENDED || room.status === RoomStatus.ARCHIVED) && room.started_at && (
-                      <span>{new Date(room.started_at).toLocaleDateString([], { day: 'numeric', month: 'short' })} · {new Date(room.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                    )}
-                    {(room.status === RoomStatus.ENDED || room.status === RoomStatus.ARCHIVED) && room.ended_at && (
-                      <span className="text-gray-300 mx-1">→</span>
-                    )}
-                    {(room.status === RoomStatus.ENDED || room.status === RoomStatus.ARCHIVED) && room.ended_at && (
-                      <span>{new Date(room.ended_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                    )}
-                    {(room.status === RoomStatus.ENDED || room.status === RoomStatus.ARCHIVED) && room.duration_seconds && (
-                      <span className="ml-1">({Math.floor(room.duration_seconds / 60)}m)</span>
+                      <>
+                        <span>{new Date(room.started_at).toLocaleDateString([], { 
+                          day: 'numeric', 
+                          month: 'short' 
+                        })} · {new Date(room.started_at).toLocaleTimeString([], { 
+                          hour: '2-digit', 
+                          minute: '2-digit',
+                          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+                        })}</span>
+                        {room.ended_at && (
+                          <>
+                            <span className="text-gray-300">→</span>
+                            <span>{new Date(room.ended_at).toLocaleTimeString([], { 
+                              hour: '2-digit', 
+                              minute: '2-digit',
+                              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+                            })}</span>
+                          </>
+                        )}
+                        {room.duration_seconds && (
+                          <span className="ml-1">({Math.floor(room.duration_seconds / 60)}m)</span>
+                        )}
+                      </>
                     )}
                   </div>
                   
@@ -281,15 +314,21 @@ export default function Dashboard() {
                       onClick={() => handleJoinRoom(room.id)}
                       className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                         room.status === RoomStatus.ACTIVE
-                          ? 'bg-green-600 text-white hover:bg-green-700 shadow-sm hover:shadow'
-                          : room.status === RoomStatus.ENDED || room.status === RoomStatus.ARCHIVED
-                            ? 'bg-gray-600 text-white hover:bg-gray-700'
-                            : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-100'
+                          ? 'bg-green-600 text-white hover:bg-green-700 shadow-sm hover:shadow-md'
+                          : room.status === RoomStatus.SCHEDULED
+                            ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm hover:shadow-md'
+                            : room.status === RoomStatus.ENDED
+                              ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm hover:shadow-md'
+                              : room.status === RoomStatus.ARCHIVED
+                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed opacity-50'
+                                : 'bg-gray-600 text-white hover:bg-gray-700'
                       }`}
+                      disabled={room.status === RoomStatus.ARCHIVED}
                     >
                       {room.status === RoomStatus.ACTIVE ? 'Join Now' : 
+                      room.status === RoomStatus.SCHEDULED ? 'View Details' :
                       room.status === RoomStatus.ENDED ? 'View Results' :
-                      room.status === RoomStatus.ARCHIVED ? 'View Protocol' : 'View Details'}
+                      room.status === RoomStatus.ARCHIVED ? 'Archived' : 'View'}
                     </button>
                   </div>
                 </div>

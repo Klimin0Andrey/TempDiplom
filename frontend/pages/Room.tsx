@@ -79,7 +79,13 @@ const startAudio = async () => {
   }
   
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      } 
+    });
     
     // Создаём скрытый audio-элемент для локального мониторинга (muted)
     localAudioRef.current = new Audio();
@@ -584,6 +590,64 @@ const toggleMic = () => {
     } catch (err) { alert("Failed to end meeting"); }
   };
 
+  // Компонент индикатора уровня звука
+  const AudioLevelIndicator: React.FC<{ stream: MediaStream | null; userId: string }> = ({ stream, userId }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    
+    useEffect(() => {
+      if (!stream || !canvasRef.current) return;
+      
+      const audioContext = new AudioContext();
+      const analyser = audioContext.createAnalyser();
+      const source = audioContext.createMediaStreamSource(stream);
+      source.connect(analyser);
+      analyser.fftSize = 32;
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+      
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d')!;
+      
+      let animationId: number;
+      const draw = () => {
+        animationId = requestAnimationFrame(draw);
+        analyser.getByteFrequencyData(dataArray);
+        
+        const average = dataArray.reduce((a, b) => a + b, 0) / bufferLength;
+        
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Градиент от зелёного к красному
+        const hue = 120 - (average / 255) * 120;
+        ctx.fillStyle = `hsl(${hue}, 80%, 50%)`;
+        
+        const barWidth = canvas.width;
+        const barHeight = (average / 255) * canvas.height;
+        ctx.fillRect(0, canvas.height - barHeight, barWidth, barHeight);
+        
+        // Отправляем presence если громкость выше порога
+        if (average > 30) {
+          wsClient.updatePresence('speaking');
+        }
+      };
+      draw();
+      
+      return () => {
+        cancelAnimationFrame(animationId);
+        audioContext.close();
+      };
+    }, [stream]);
+    
+    return (
+      <canvas 
+        ref={canvasRef} 
+        width={20} 
+        height={40} 
+        className="rounded-sm opacity-80"
+      />
+    );
+  };
+
   return (
     <div className="h-screen w-screen bg-gray-900 flex flex-col text-gray-100 overflow-hidden">
       {/* Top Header */}
@@ -655,7 +719,13 @@ const toggleMic = () => {
                   </div>
                 </div>
                 {(room?.status !== 'ended' && room?.status !== 'archived') && (
-                  <div className="flex items-center space-x-1 text-gray-400">
+                  <div className="flex items-center space-x-2 text-gray-400">
+                    {audioConnected && !isMuted && localAudioRef.current?.srcObject && (
+                      <AudioLevelIndicator 
+                        stream={localAudioRef.current.srcObject as MediaStream} 
+                        userId={currentUser?.id || ''} 
+                      />
+                    )}
                     {isHandRaised && <Hand className="w-4 h-4 text-yellow-500" />}
                     {isMuted ? <MicOff className="w-4 h-4 text-red-400" /> : <Mic className="w-4 h-4 text-green-400" />}
                   </div>

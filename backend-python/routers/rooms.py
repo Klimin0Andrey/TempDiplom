@@ -81,6 +81,26 @@ async def create_room(
                     detail=f"Monthly room limit reached ({max_rooms}) for {tier.name} plan. You've used {room_count} rooms this month."
                 )
     # ========== КОНЕЦ ПРОВЕРКИ ==========
+    
+    # ========== ПРОВЕРКА ЛИМИТА УЧАСТНИКОВ ПО ТАРИФУ ==========
+    max_allowed = None
+    if org and org.tier_id:
+        tier = await db.get(models.Tier, org.tier_id)
+        if tier and request.max_participants:
+            # Определяем максимальное кол-во участников по тарифу
+            max_allowed = None
+            if tier.slug == "light":
+                max_allowed = 5
+            elif tier.slug == "pro":
+                max_allowed = 30
+            # business — без ограничений
+            
+            if max_allowed and request.max_participants > max_allowed:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Max participants limit for {tier.name} plan is {max_allowed}. You requested {request.max_participants}."
+                )
+    # ========== КОНЕЦ ПРОВЕРКИ ==========
 
     new_room = models.Room(
         organization_id=current_user.organization_id,
@@ -113,7 +133,7 @@ async def create_room(
         "creator_name": f"{current_user.first_name} {current_user.last_name or ''}".strip(),
         "scheduled_start_at": new_room.scheduled_start_at,
         "participants_count": 1,
-        "max_participants": request.max_participants,
+        "max_participants": min(request.max_participants, max_allowed) if max_allowed else request.max_participants,
         "created_at": new_room.created_at,
         "updated_at": new_room.updated_at,
     }
@@ -428,7 +448,7 @@ async def update_room(
     if request.description is not None:
         room.description = request.description
     if request.scheduled_start_at is not None:
-        room.scheduled_start_at = request.scheduled_start_at.replace(tzinfo=None)
+        room.scheduled_start_at = request.scheduled_start_at.replace(tzinfo=None) if request.scheduled_start_at else None
 
     await db.commit()
     await db.refresh(room)
