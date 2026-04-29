@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Users, UserPlus, Mail, Shield, MoreVertical, CheckCircle2, Clock, Loader2, AlertCircle, X } from 'lucide-react';
 import Sidebar from '../components/Sidebar.tsx';
+import toast from 'react-hot-toast';
 import { UserResponse, UserRole, UserStatus } from '../types.ts';
 import { api } from '../services/api.ts';
 
@@ -68,7 +69,7 @@ export default function Team() {
       setInviteFirstName('');
       fetchUsers();
     } catch (err: any) {
-      alert("Failed to invite: " + (err.message || "Unknown error"));
+      toast.error("Failed to invite: " + (err.message || "Unknown error"));
     }
   };
 
@@ -79,7 +80,7 @@ export default function Team() {
       setOpenMenuId(null);
       fetchUsers();
     } catch (err: any) {
-      alert("Failed to deactivate: " + (err.message || "Unknown error"));
+      toast.error("Failed to deactivate: " + (err.message || "Unknown error"));
     }
   };
 
@@ -89,7 +90,7 @@ export default function Team() {
       setOpenMenuId(null);
       fetchUsers();
     } catch (err: any) {
-      alert("Failed to change role: " + (err.message || "Unknown error"));
+      toast.error("Failed to change role: " + (err.message || "Unknown error"));
     }
   };
 

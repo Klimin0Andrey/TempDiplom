@@ -5,6 +5,7 @@ import { RoomResponse, RoomStatus } from '../types.ts';
 import RoomModal from '../components/RoomModal.tsx';
 import Sidebar from '../components/Sidebar.tsx';
 import InviteToRoomModal from '../components/InviteToRoomModal.tsx';
+import toast from 'react-hot-toast';
 import { api } from '../services/api.ts';
 
 export default function Dashboard() {
@@ -63,7 +64,7 @@ export default function Dashboard() {
       fetchRooms();
     } catch (err: any) {
       console.error("Failed to create room:", err);
-      alert("Failed to create room: " + (err.message || "Unknown error"));
+      toast.error("Failed to create room: " + (err.message || "Unknown error"));
     }
   };
 
@@ -80,7 +81,7 @@ export default function Dashboard() {
       fetchRooms();
     } catch (err: any) {
       console.error("Failed to update room:", err);
-      alert("Failed to update room: " + (err.message || "Unknown error"));
+      toast.error("Failed to update room: " + (err.message || "Unknown error"));
     }
   };
 
@@ -90,7 +91,7 @@ export default function Dashboard() {
       await api.rooms.archive(roomId);
       fetchRooms();
     } catch (err: any) {
-      alert("Failed to archive: " + (err.message || "Unknown error"));
+      toast.error("Failed to archive: " + (err.message || "Unknown error"));
     }
   };
 
@@ -100,7 +101,7 @@ export default function Dashboard() {
       await api.rooms.delete(roomId);
       fetchRooms();
     } catch (err: any) {
-      alert("Failed to delete: " + (err.message || "Unknown error"));
+      toast.error("Failed to delete: " + (err.message || "Unknown error"));
     }
   };
 

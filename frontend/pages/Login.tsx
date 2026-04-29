@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Mic, Lock, Mail, User, UserPlus, LogIn, Building2, CreditCard } from 'lucide-react';
 import { api } from '../services/api.ts';
+import toast from 'react-hot-toast';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -62,7 +63,7 @@ export default function Login() {
       navigate(destination, { replace: true });
     } catch (err: any) {
       console.error('Auth error:', err);
-      alert(err.message || 'Authentication failed');
+      toast.error(err.message || 'Authentication failed');
     }
   };
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Search, Mail, Users, Send, Check, Loader2 } from 'lucide-react';
 import { api } from '../services/api.ts';
 import { UserResponse } from '../types.ts';
+import toast from 'react-hot-toast';
 
 interface Props {
   isOpen: boolean;
@@ -40,7 +41,7 @@ export default function InviteToRoomModal({ isOpen, onClose, roomId, roomName }:
     try {
       await api.rooms.inviteToRoom(roomId, email);
       setSentEmails(prev => new Set(prev).add(email));
-    } catch (err) { alert("Failed to send invite"); }
+    } catch (err) { toast.error("Failed to send invite"); }
     finally { setSendingEmail(null); }
   };
 
@@ -51,7 +52,7 @@ export default function InviteToRoomModal({ isOpen, onClose, roomId, roomName }:
       await api.rooms.inviteAllToRoom(roomId);
       alert("Invitations sent to everyone!");
       handleClose();
-    } catch (err) { alert("Error sending mass invites"); }
+    } catch (err) { toast.error("Error sending mass invites"); }
     finally { setIsLoading(false); }
   };
 

@@ -1,5 +1,6 @@
 import React from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
 import Landing from './pages/Landing.tsx';
 import Dashboard from './pages/Dashboard.tsx';
 import Room from './pages/Room.tsx';
@@ -34,6 +35,7 @@ export default function App() {
         {/* Редирект на лендинг для неизвестных путей */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <Toaster position="bottom-right" />
     </HashRouter>
   );
 }
