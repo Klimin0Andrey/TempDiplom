@@ -361,14 +361,25 @@ async def websocket_endpoint(
                     "sdp": message_data.get("sdp"),
                     "candidate": message_data.get("candidate"),
                 }
-
+                
+                # Логируем для отладки
+                print(f"📡 Signaling {msg_type} from {user_id} to {target}")
+                
+                # Отправляем сообщение конкретному участнику
                 if target and room_id in manager.ws_connections:
                     ws = manager.ws_connections[room_id].get(target)
                     if ws:
                         try:
                             await ws.send_json(signaling_msg)
-                        except Exception:
-                            pass
+                            print(f"✓ {msg_type} sent to {target}")
+                        except Exception as e:
+                            print(f"✗ Failed to send {msg_type} to {target}: {e}")
+                    else:
+                        # Сохраняем сообщение если пользователь не онлайн
+                        print(f"⚠️ Target {target} not found in room {room_id}")
+                        # Здесь можно добавить буферизацию в Redis
+                else:
+                    print(f"⚠️ Invalid target or room_id: {target}, {room_id}")
 
     except WebSocketDisconnect:
         ping_task.cancel()

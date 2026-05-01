@@ -11,6 +11,50 @@ import { api } from '../services/api.ts';
 import { wsClient, ConnectionState } from '../services/websocket.ts';
 import { AlertTriangle } from 'lucide-react';
 
+
+// Кастомное модальное окно для подтверждения
+const ConfirmDialog: React.FC<{
+  isOpen: boolean;
+  title: string;
+  message: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  confirmText?: string;
+  cancelText?: string;
+  danger?: boolean;
+}> = ({ isOpen, title, message, onConfirm, onCancel, confirmText = "Да", cancelText = "Отмена", danger = false }) => {
+  if (!isOpen) return null;
+  
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in">
+      <div className="bg-gray-800 rounded-2xl w-96 max-w-[90%] shadow-2xl border border-gray-700 animate-slide-in">
+        <div className="p-6">
+          <h3 className="text-xl font-semibold text-white mb-2">{title}</h3>
+          <p className="text-gray-300 text-sm">{message}</p>
+        </div>
+        <div className="flex gap-3 p-6 pt-0">
+          <button
+            onClick={onCancel}
+            className="flex-1 px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-200 font-medium transition-colors"
+          >
+            {cancelText}
+          </button>
+          <button
+            onClick={onConfirm}
+            className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
+              danger 
+                ? 'bg-red-600 hover:bg-red-700 text-white' 
+                : 'bg-blue-600 hover:bg-blue-700 text-white'
+            }`}
+          >
+            {confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const MOCK_PROTOCOL: ProtocolResponse = {
   id: 'prot_123',
   room_id: 'room_123',
@@ -37,6 +81,55 @@ const MOCK_PROTOCOL: ProtocolResponse = {
   pdf_url: '#'
 };
 
+const ru = {
+  chat: {
+    title: "Чат встречи",
+    placeholder: "Напишите сообщение...",
+    reply: "Ответить",
+    edit: "Редактировать",
+    delete: "Удалить",
+    deleted: "удалено",
+    edited: "изменено",
+  },
+  room: {
+    title: "Комната конференции",
+    autoRecording: "Автозапись",
+    participants: "Участники",
+    meetingSummary: "Итоги встречи",
+    duration: "Длительность",
+    status: "Статус",
+    meetingEnded: "Встреча завершена",
+    backToDashboard: "На главную",
+    leave: "Покинуть",
+    endMeeting: "Завершить",
+    endMeetingForEveryone: "Завершить встречу для всех",
+    viewProtocol: "Просмотр протокола",
+    settings: "Настройки",
+    share: "Поделиться",
+    more: "Ещё",
+  },
+  media: {
+    title: "Медиа и AI обработка",
+    description: "Это место зарезервировано для модуля второго студента. Здесь будут отображаться WebRTC аудиопотоки, визуализация активного спикера и расшифровка речи в реальном времени.",
+    listening: "Слушаем и расшифровываем...",
+  },
+  confirm: {
+    deleteMessage: "Удалить сообщение?",
+    deleteMessageWarning: "Вы уверены, что хотите удалить это сообщение?",
+    endMeeting: "Завершить встречу?",
+    endMeetingWarning: "Вы уверены, что хотите завершить встречу для всех участников? Это действие нельзя отменить.",
+    yes: "Да",
+    no: "Нет",
+  }
+};
+
+
+declare global {
+  interface Window {
+    pendingOffers?: any[];
+  }
+}
+
 export default function Room() {
   const { roomId } = useParams();
   const navigate = useNavigate();
@@ -61,6 +154,7 @@ export default function Room() {
 
   // ====== WebRTC Audio State ======
   const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const pendingIceCandidates = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const localAudioRef = useRef<HTMLAudioElement | null>(null);
   const [audioConnected, setAudioConnected] = useState(false);
   // ====== End WebRTC Audio State ======
@@ -68,11 +162,36 @@ export default function Room() {
   const userStr = localStorage.getItem('user');
   const currentUser = userStr ? JSON.parse(userStr) : null;
 
+  const wsConnectedRef = useRef(false);
+  const autoStartAttemptedRef = useRef(false);
+
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    danger?: boolean;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    danger: false,
+  });
+
 
   // ====== WebRTC Audio Functions ======
+// Полностью ЗАМЕНИТЕ на это:
 const startAudio = async () => {
   console.log('🎤 startAudio() called at', new Date().toISOString());
-  // Проверка поддержки WebRTC
+  console.log('Current participants:', participants.map(p => p.user_id));
+  console.log('Current user ID:', currentUser?.id);
+  
+  if (audioConnected) {
+    console.log('Audio already connected, skipping');
+    return;
+  }
+  
   if (!window.RTCPeerConnection) {
     alert('Your browser does not support WebRTC audio calls');
     return;
@@ -87,21 +206,20 @@ const startAudio = async () => {
       } 
     });
     
-    // Создаём скрытый audio-элемент для локального мониторинга (muted)
+    // Создаём скрытый audio-элемент для локального мониторинга
     localAudioRef.current = new Audio();
     localAudioRef.current.srcObject = stream;
     localAudioRef.current.muted = true;
     localAudioRef.current.play().catch(() => {});
     
-    // Создаём peer connection для каждого участника (только если участники уже есть)
-    if (participants.length > 0) {
-      participants.forEach(async (p) => {
-        if (p.user_id === currentUser?.id) return;
-        await createPeerConnection(p.user_id, stream);
-      });
+    // Создаём peer connection для каждого существующего участника
+    const otherParticipants = participants.filter(p => p.user_id !== currentUser?.id);
+    for (const p of otherParticipants) {
+      await createPeerConnection(p.user_id, stream);
     }
     
     setAudioConnected(true);
+    setIsMuted(true);
     wsClient.updatePresence('speaking');
   } catch (err) {
     console.error('Microphone access denied:', err);
@@ -109,13 +227,46 @@ const startAudio = async () => {
   }
 };
 
+// Полностью ЗАМЕНИТЕ на это:
 const createPeerConnection = async (targetUserId: string, stream: MediaStream) => {
+  // ДОБАВЬТЕ ЭТУ ПРОВЕРКУ В НАЧАЛО:
+  if (!stream || stream.getTracks().length === 0) {
+    console.warn('⚠️ Cannot create peer connection: no stream');
+    return;
+  }
+
   // Закрываем старое соединение если есть
   const existing = peerConnections.current.get(targetUserId);
-  if (existing) existing.close();
+  if (existing) {
+    existing.close();
+  }
   
   const pc = new RTCPeerConnection({
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    iceServers: [
+      {
+        urls: "stun:stun.relay.metered.ca:80",
+      },
+      {
+        urls: "turn:global.relay.metered.ca:80",
+        username: "c2427f3ffb09c685329001ec",
+        credential: "XfMYmyGC726SdO3q",
+      },
+      {
+        urls: "turn:global.relay.metered.ca:80?transport=tcp",
+        username: "c2427f3ffb09c685329001ec",
+        credential: "XfMYmyGC726SdO3q",
+      },
+      {
+        urls: "turn:global.relay.metered.ca:443",
+        username: "c2427f3ffb09c685329001ec",
+        credential: "XfMYmyGC726SdO3q",
+      },
+      {
+        urls: "turns:global.relay.metered.ca:443?transport=tcp",
+        username: "c2427f3ffb09c685329001ec",
+        credential: "XfMYmyGC726SdO3q",
+      },
+    ]
   });
   
   // Добавляем локальные аудиодорожки
@@ -133,13 +284,20 @@ const createPeerConnection = async (targetUserId: string, stream: MediaStream) =
     }
   };
   
+  // Отслеживаем состояние ICE
+  pc.oniceconnectionstatechange = () => {
+    console.log(`ICE state for ${targetUserId}:`, pc.iceConnectionState);
+  };
+  
   // При получении удалённого аудиопотока — воспроизводим
   pc.ontrack = (event) => {
+    console.log(`🔊 Received remote audio track from: ${targetUserId}`);
     const audio = new Audio();
     audio.srcObject = event.streams[0];
     audio.autoplay = true;
-    audio.play().catch(() => {});
-    wsClient.updatePresence('speaking');
+    audio.play().catch((err) => {
+      console.error('❌ Audio play failed:', err);
+    });
   };
   
   peerConnections.current.set(targetUserId, pc);
@@ -151,25 +309,61 @@ const createPeerConnection = async (targetUserId: string, stream: MediaStream) =
   console.log('📤 Sent offer to:', targetUserId);
 };
 
+// Полностью ЗАМЕНИТЕ на это:
 const handleWebRTCSignal = async (data: any) => {
-  console.log('📡 WebRTC SIGNAL received:', data.type, 'from:', data.from, 'sdp:', !!data.sdp, 'candidate:', !!data.candidate);
+  console.log('📡 WebRTC SIGNAL received:', data.type, 'from:', data.from);
   const { type, from, sdp, candidate } = data;
   
   try {
     let pc: RTCPeerConnection | undefined = peerConnections.current.get(from);
     
-    if (!pc && (type === 'offer' || type === 'answer')) {
-      console.log('🆕 Creating NEW peer connection for incoming call from:', from);
+    // Обработка Offer
+    if (type === 'offer' && sdp) {
+      console.log('🆕 Creating NEW peer connection for incoming offer from:', from);
       
-      // НЕ вызываем startAudio здесь — используем флаг ожидания
-      if (!localAudioRef.current?.srcObject && !audioConnected) {
+      // Закрываем существующее соединение если есть
+      if (pc) {
+        console.log('Closing existing connection before creating new one');
+        pc.close();
+      }
+      
+      // Ждём, пока пользователь включит микрофон
+      if (!localAudioRef.current?.srcObject) {
         console.warn('⚠️ No local audio stream yet, waiting for user to enable mic...');
-        // Не вызываем startAudio — пользователь сам включит микрофон
-        return; // Игнорируем сигнал, ждём когда пользователь включит микрофон
+        // Буферизируем offer для обработки позже
+        if (!window['pendingOffers']) {
+          window['pendingOffers'] = [];
+        }
+        window['pendingOffers'].push(data);
+        return;
       }
       
       const newPc = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        iceServers: [
+          {
+            urls: "stun:stun.relay.metered.ca:80",
+          },
+          {
+            urls: "turn:global.relay.metered.ca:80",
+            username: "c2427f3ffb09c685329001ec",
+            credential: "XfMYmyGC726SdO3q",
+          },
+          {
+            urls: "turn:global.relay.metered.ca:80?transport=tcp",
+            username: "c2427f3ffb09c685329001ec",
+            credential: "XfMYmyGC726SdO3q",
+          },
+          {
+            urls: "turn:global.relay.metered.ca:443",
+            username: "c2427f3ffb09c685329001ec",
+            credential: "XfMYmyGC726SdO3q",
+          },
+          {
+            urls: "turns:global.relay.metered.ca:443?transport=tcp",
+            username: "c2427f3ffb09c685329001ec",
+            credential: "XfMYmyGC726SdO3q",
+          },
+        ]
       });
       
       newPc.onicecandidate = (event) => {
@@ -179,7 +373,7 @@ const handleWebRTCSignal = async (data: any) => {
       };
       
       newPc.oniceconnectionstatechange = () => {
-        console.log('🔗 ICE connection state:', newPc.iceConnectionState);
+        console.log(`ICE state for ${from}:`, newPc.iceConnectionState);
       };
       
       newPc.ontrack = (event) => {
@@ -187,9 +381,7 @@ const handleWebRTCSignal = async (data: any) => {
         const audio = new Audio();
         audio.srcObject = event.streams[0];
         audio.autoplay = true;
-        audio.play().then(() => {
-          console.log('✅ Remote audio playing');
-        }).catch((err) => {
+        audio.play().catch((err) => {
           console.error('❌ Audio play failed:', err);
         });
       };
@@ -201,27 +393,49 @@ const handleWebRTCSignal = async (data: any) => {
         });
       }
       
+      await newPc.setRemoteDescription(new RTCSessionDescription(sdp));
+      const answer = await newPc.createAnswer();
+      await newPc.setLocalDescription(answer);
+      wsClient.send('answer', { target: from, sdp: newPc.localDescription });
+      
       peerConnections.current.set(from, newPc);
-      pc = newPc;
-    }
-    
-    if (!pc) {
-      console.log('⏭️ Skipping signal — no peer connection for:', from);
-      return;
-    }
-    
-    if (type === 'offer' && sdp) {
-      await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      wsClient.send('answer', { target: from, sdp: pc.localDescription });
-    } else if (type === 'answer' && sdp) {
-      await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-    } else if (type === 'ice-candidate' && candidate) {
-      if (pc.remoteDescription) {
-        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      
+      // Добавляем накопленные ICE кандидаты
+      const candidates = pendingIceCandidates.current.get(from);
+      if (candidates && candidates.length > 0) {
+        console.log(`Adding ${candidates.length} buffered ICE candidates for ${from}`);
+        for (const cand of candidates) {
+          try {
+            await newPc.addIceCandidate(new RTCIceCandidate(cand));
+          } catch (err) {
+            console.error('Error adding buffered candidate:', err);
+          }
+        }
+        pendingIceCandidates.current.delete(from);
       }
-      // Игнорируем ICE если нет remoteDescription — не буферизируем
+    }
+    
+    // Обработка Answer
+    else if (type === 'answer' && sdp && pc) {
+      console.log('📞 Setting remote description for answer from:', from);
+      await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+    }
+    
+    // Обработка ICE кандидатов
+    else if (type === 'ice-candidate' && candidate) {
+      if (pc && pc.remoteDescription) {
+        // Если есть remote description - добавляем сразу
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      } else if (pc && !pc.remoteDescription) {
+        // Нет remote description - буферизируем
+        console.log(`Buffering ICE candidate for ${from} (remote description not ready)`);
+        if (!pendingIceCandidates.current.has(from)) {
+          pendingIceCandidates.current.set(from, []);
+        }
+        pendingIceCandidates.current.get(from)!.push(candidate);
+      } else if (!pc) {
+        console.log(`No peer connection for ${from}, dropping ICE candidate`);
+      }
     }
   } catch (err) {
     console.error('❌ WebRTC signal error:', err);
@@ -262,6 +476,33 @@ const toggleMic = () => {
     wsClient.send('presence', { status: 'speaking', is_muted: false, hand_raised: isHandRaised });
   }
 };
+
+
+// Добавьте после функции toggleMic, перед useEffect загрузки комнаты
+// ====== ОЧИСТКА ПРИ РЕКОННЕКТЕ WS ======
+useEffect(() => {
+  const handleConnectionState = (state: ConnectionState) => {
+    if (state === 'disconnected') {
+      console.log('🔄 WebSocket disconnected, cleaning up peer connections');
+      // Очищаем все peer connections
+      peerConnections.current.forEach(pc => {
+        try { pc.close(); } catch(e) {}
+      });
+      peerConnections.current.clear();
+      pendingIceCandidates.current.clear();
+      setAudioConnected(false);
+      // Сбрасываем флаг авто-запуска чтобы можно было запустить заново
+      autoStartAttemptedRef.current = false;
+    }
+  };
+  
+  const unsubscribe = wsClient.onStateChange(handleConnectionState);
+  return () => {
+    if (unsubscribe) unsubscribe();
+  };
+}, []);
+
+
 // ====== End WebRTC Audio Functions ======
 
   // Загрузка данных комнаты
@@ -336,8 +577,7 @@ const toggleMic = () => {
     }, [room?.started_at, room?.status, room?.duration_seconds]);
 
   // ====== АВТО-ЗАПУСК АУДИО ПОСЛЕ ГОТОВНОСТИ WS ======
-  const wsConnectedRef = useRef(false);
-  const autoStartAttemptedRef = useRef(false);
+  
 
   useEffect(() => {
     wsConnectedRef.current = false;
@@ -355,26 +595,41 @@ const toggleMic = () => {
     };
   }, [roomId]);
 
-    useEffect(() => {
-      if (
-        room &&
-        (room.status === 'scheduled' || room.status === 'active') &&
-        wsConnectedRef.current &&
-        participants.length > 0 &&
-        !autoStartAttemptedRef.current
-      ) {
-        autoStartAttemptedRef.current = true;
-        console.log('🎯 Auto-starting audio with muted mic');
-        startAudio().then(() => {
-          if (localAudioRef.current?.srcObject) {
-            const stream = localAudioRef.current.srcObject as MediaStream;
-            stream.getTracks().forEach(track => { track.enabled = false; });
-          }
-        });
-      }
-    }, [room, participants]);
+    // useEffect(() => {
+    //   if (
+    //     room &&
+    //     (room.status === 'scheduled' || room.status === 'active') &&
+    //     wsConnectedRef.current &&
+    //     !autoStartAttemptedRef.current
+    //   ) {
+    //     autoStartAttemptedRef.current = true;
+    //     console.log('🎯 Auto-starting audio with muted mic');
+        
+    //     // Ждём появления participants_list НЕ БОЛЕЕ 3 секунд
+    //     let attempts = 0;
+    //     const maxAttempts = 30;
+        
+    //     const checkAndStart = setInterval(() => {
+    //       attempts++;
+          
+    //       // Критично: нужно ждать, пока participants НЕ пустой И содержит других участников
+    //       const hasOtherParticipants = participants.some(p => p.user_id !== currentUser?.id);
+          
+    //       if (hasOtherParticipants) {
+    //         clearInterval(checkAndStart);
+    //         console.log('✅ Other participants found, starting audio');
+    //         startAudio();
+    //       } else if (attempts >= maxAttempts) {
+    //         clearInterval(checkAndStart);
+    //         console.log('⚠️ Timeout waiting for participants, starting audio anyway (audio may not work)');
+    //         startAudio();
+    //       } else if (attempts % 5 === 0) { // Логируем каждые 5 попыток
+    //         console.log(`Waiting for participants... (${attempts}/${maxAttempts})`, participants.map(p => p.user_id));
+    //       }
+    //     }, 100);
+    //   }
+    // }, [room, wsConnectedRef.current, participants, currentUser?.id]);
   // ====== КОНЕЦ АВТО-ЗАПУСКА ======
-  
 
   // WebSocket Integration
   useEffect(() => {
@@ -389,6 +644,33 @@ const toggleMic = () => {
     if (room?.status !== 'ended' && room?.status !== 'archived') {
       wsClient.connect(roomId, token);
     }
+
+    const handleChatEdited = (data: any) => {
+      setMessages(prev => prev.map(msg => {
+        if (msg.id === data.messageId) {
+          return { ...msg, message: data.message, edited_at: data.edited_at };
+        }
+        return msg;
+      }));
+    };
+
+    // const handleChatDeleted = (data: any) => {
+    //   setMessages(prev => prev.map(msg => {
+    //     if (msg.id === data.messageId) {
+    //       return { ...msg, message: "удалено", deleted_at: data.deleted_at };
+    //     }
+    //     return msg;
+    //   }));
+    // };
+
+    const handleChatDeleted = (data: any) => {
+      setMessages(prev => prev.map(msg => {
+        if (msg.id === data.messageId) {
+          return { ...msg, deleted_at: data.deleted_at }; // НЕ меняем message
+        }
+        return msg;
+      }));
+    };
 
     const handleIncomingChat = (msg: ChatMessage) => {
         // Если username нет — попробуй взять из userId (для старых сообщений)
@@ -469,7 +751,7 @@ const toggleMic = () => {
       }]);
     };
 
-        const handleChatHistory = (data: any) => {
+    const handleChatHistory = (data: any) => {
       if (data.messages && Array.isArray(data.messages)) {
         setMessages(prev => [...data.messages, ...prev]);
       }
@@ -477,6 +759,8 @@ const toggleMic = () => {
 
     wsClient.on('chat', handleIncomingChat);
     wsClient.on('chat_history', handleChatHistory);
+    wsClient.on('chat_edited', handleChatEdited);   // <-- ДОБАВИТЬ
+    wsClient.on('chat_deleted', handleChatDeleted); // <-- ДОБАВИТЬ
     wsClient.on('system', handleSystem);
     wsClient.on('presence', handlePresence);
     wsClient.on('protocol_ready', handleProtocolReady);
@@ -485,6 +769,7 @@ const toggleMic = () => {
     wsClient.on('ice-candidate', handleWebRTCSignal);
 
     const handleParticipantsList = (data: any) => {
+      console.log('📋 Participants list received:', data);
       if (room?.status === 'ended' || room?.status === 'archived') return;
       if (data.participants) {
         const list = data.participants
@@ -530,6 +815,8 @@ const toggleMic = () => {
     return () => {
       wsClient.off('chat', handleIncomingChat);
       wsClient.off('chat_history', handleChatHistory);
+      wsClient.off('chat_edited', handleChatEdited);   // <-- ДОБАВИТЬ
+      wsClient.off('chat_deleted', handleChatDeleted); // <-- ДОБАВИТЬ
       wsClient.off('system', handleSystem);
       wsClient.off('presence', handlePresence);
       wsClient.off('protocol_ready', handleProtocolReady);
@@ -538,6 +825,15 @@ const toggleMic = () => {
       wsClient.off('offer', handleWebRTCSignal);
       wsClient.off('answer', handleWebRTCSignal);
       wsClient.off('ice-candidate', handleWebRTCSignal);
+      
+      // ДОБАВЬТЕ ЭТИ СТРОКИ:
+      // Полная очистка всех peer connections
+      peerConnections.current.forEach(pc => {
+        try { pc.close(); } catch(e) {}
+      });
+      peerConnections.current.clear();
+      pendingIceCandidates.current.clear();
+      
       stopAudio();
     };
   }, [roomId, navigate]);
@@ -580,14 +876,49 @@ const toggleMic = () => {
     navigate('/dashboard');
   };
 
-  const handleEndMeeting = async () => {
-    if (!roomId || !confirm("End this meeting for everyone?")) return;
-    try {
-      // Отправляем WebSocket-уведомление всем участникам
-      wsClient.send('end_room', { roomId });
-      await api.rooms.end(roomId);
-      navigate('/dashboard');
-    } catch (err) { alert("Failed to end meeting"); }
+  const handleEndMeeting = () => {
+    if (!roomId) return;
+    setConfirmDialog({
+      isOpen: true,
+      title: "Завершить встречу?",
+      message: "Вы уверены, что хотите завершить встречу для всех участников? Это действие нельзя отменить.",
+      danger: true,
+      onConfirm: async () => {
+        try {
+          wsClient.send('end_room', { roomId });
+          await api.rooms.end(roomId);
+          navigate('/dashboard');
+        } catch (err) { 
+          alert("Не удалось завершить встречу"); 
+        }
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+      }
+    });
+  };
+
+  // Добавьте перед AudioLevelIndicator
+  const formatTimeAgo = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffSec = Math.floor((now.getTime() - date.getTime()) / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHour = Math.floor(diffMin / 60);
+    
+    if (diffSec < 60) return 'только что';
+    if (diffMin < 60) return `${diffMin} мин назад`;
+    if (diffHour < 24) return `${diffHour} ч назад`;
+    return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const handleEditMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim() || !editingMessage) return;
+    
+    wsClient.send('edit_chat', { messageId: editingMessage.id, message: chatInput.trim() });
+    setChatInput('');
+    setEditingMessage(null);
+    setReplyTo(null);
+    wsClient.updatePresence('idle');
   };
 
   // Компонент индикатора уровня звука
@@ -657,11 +988,11 @@ const toggleMic = () => {
             <Mic className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="font-semibold text-sm">Conference Room</h1>
+            <h1 className="font-semibold text-sm">{ru.room.title}</h1>
             <div className="flex items-center space-x-2">
               {(room?.status !== 'ended' && room?.status !== 'archived') && (
                 <span className="flex items-center text-xs text-red-400 font-medium animate-pulse">
-                  <Circle className="w-2 h-2 fill-current mr-1" /> Auto-Recording
+                  <Circle className="w-2 h-2 fill-current mr-1" /> {ru.room.autoRecording}
                 </span>
               )}
               <span className="text-gray-600">•</span>
@@ -677,7 +1008,7 @@ const toggleMic = () => {
             className="flex items-center space-x-2 px-3 py-1.5 bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 rounded-md text-sm font-medium transition-colors mr-2"
           >
             <FileText className="w-4 h-4" />
-            <span>View Protocol</span>
+            <span>{ru.room.viewProtocol}</span>
           </button>
           <button 
             onClick={() => setShowParticipants(!showParticipants)}
@@ -747,7 +1078,7 @@ const toggleMic = () => {
                     <div className="flex flex-col">
                       <span className="text-sm truncate">{p.username}</span>
                       {p.presence_status === 'typing' && (
-                        <span className="text-[10px] text-blue-400 italic">typing...</span>
+                        <span className="text-[10px] text-blue-400 italic">печатает...</span>
                       )}
                     </div>
                   </div>
@@ -768,19 +1099,19 @@ const toggleMic = () => {
           {(room?.status === 'ended' || room?.status === 'archived') ? (
             /* Итоговая информация для завершённых встреч */
             <div className="max-w-2xl w-full bg-gray-800/50 border border-gray-700 rounded-2xl p-8 backdrop-blur-sm">
-              <h2 className="text-xl font-bold text-gray-200 mb-6 text-center">Meeting Summary</h2>
+              <h2 className="text-xl font-bold text-gray-200 mb-6 text-center">{ru.room.meetingSummary}</h2>
               <div className="grid grid-cols-2 gap-4 text-center">
                 <div className="bg-gray-700/50 rounded-xl p-4">
-                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Duration</p>
+                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">{ru.room.duration}</p>
                   <p className="text-2xl font-bold text-white">{elapsedTime}</p>
                 </div>
                 <div className="bg-gray-700/50 rounded-xl p-4">
-                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Participants</p>
+                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">{ru.room.participants}</p>
                   {/* total_participants — это общее кол-во уникальных людей за всё время из БД */}
                   <p className="text-2xl font-bold text-white">{room?.total_participants || 0}</p>
                 </div>
                 <div className="bg-gray-700/50 rounded-xl p-4 col-span-2">
-                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Status</p>
+                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">{ru.room.status}</p>
                   <p className="text-lg font-bold text-purple-400 capitalize">{room.status}</p>
                 </div>
               </div>
@@ -792,19 +1123,15 @@ const toggleMic = () => {
                 <Mic className="w-96 h-96" />
               </div>
               <div className="max-w-2xl w-full bg-gray-800/50 border border-gray-700 border-dashed rounded-2xl p-12 text-center backdrop-blur-sm">
-                <h2 className="text-2xl font-bold text-gray-300 mb-4">Media & AI Processing Area</h2>
-                <p className="text-gray-400 mb-6">
-                  This space is reserved for the second student's module. 
-                  It will contain WebRTC audio streams, active speaker visualization, 
-                  and real-time STT (Speech-to-Text) transcriptions.
-                </p>
+                <h2 className="text-2xl font-bold text-gray-300 mb-4">{ru.media.title}</h2>
+                <p className="text-gray-400 mb-6">{ru.media.description}</p>
                 <div className="flex flex-col items-center">
                   <div className="flex justify-center space-x-4 mb-4">
                     <div className="h-3 w-12 bg-blue-500 rounded-full animate-pulse"></div>
                     <div className="h-3 w-16 bg-blue-400 rounded-full animate-pulse delay-75"></div>
                     <div className="h-3 w-8 bg-blue-600 rounded-full animate-pulse delay-150"></div>
                   </div>
-                  <p className="text-sm text-blue-400 font-medium">Listening and transcribing...</p>
+                  <p className="text-sm text-blue-400 font-medium">{ru.media.listening}</p>
                 </div>
               </div>
             </>
@@ -814,112 +1141,130 @@ const toggleMic = () => {
         {/* Right Sidebar: Chat */}
         {showChat && (
           <div className="w-80 bg-gray-800 border-l border-gray-700 flex flex-col shrink-0">
-            <div className="p-4 border-b border-gray-700">
-              <h2 className="font-semibold text-sm">In-call messages</h2>
+            <div className="p-4 border-b border-gray-700 flex items-center justify-between">
+              <h2 className="font-semibold text-sm">{ru.chat.title}</h2>
+              <span className="text-xs text-gray-500">{messages.length}</span>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {messages.map(msg => {
+            <div className="flex-1 overflow-y-auto p-3 space-y-3">
+              {messages.map((msg) => {
+                // Системные сообщения
                 if (msg.message_type === 'system') {
                   return (
-                    <div key={msg.id} className="flex justify-center">
-                      <span className="text-xs text-gray-500 italic bg-gray-800/50 px-3 py-1 rounded-full text-center">
-                        {msg.message}
-                      </span>
+                    <div key={msg.id} className="flex justify-center animate-fade-in">
+                      <div className="bg-gray-700/50 rounded-full px-4 py-1.5">
+                        <span className="text-xs text-gray-400">{msg.message}</span>
+                      </div>
                     </div>
                   );
                 }
                 
+                // Уведомления о протоколе
                 if (msg.message_type === 'notification') {
                   return (
-                    <div key={msg.id} className="flex items-center space-x-2 bg-blue-900/30 border border-blue-800/50 p-3 rounded-lg cursor-pointer hover:bg-blue-900/50 transition-colors" onClick={() => setIsProtocolViewerOpen(true)}>
-                      <Info className="w-4 h-4 text-blue-400 shrink-0" />
-                      <span className="text-sm text-blue-200">{msg.message}</span>
+                    <div 
+                      key={msg.id} 
+                      className="bg-gradient-to-r from-blue-900/40 to-purple-900/40 border border-blue-800/50 rounded-xl p-3 cursor-pointer hover:from-blue-900/60 transition-all animate-slide-in"
+                      onClick={() => setIsProtocolViewerOpen(true)}
+                    >
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-blue-400" />
+                        <div className="flex-1">
+                          <p className="text-sm text-blue-200 font-medium">Протокол готов</p>
+                          <p className="text-xs text-blue-300/70">{msg.message}</p>
+                        </div>
+                      </div>
                     </div>
                   );
                 }
 
+                const isOwn = msg.user_id === currentUser?.id;
+                
                 return (
-                  <div key={msg.id} className="flex flex-col group">
-                    <div className="flex items-baseline justify-between mb-1">
-                      <div className="flex items-baseline space-x-2">
-                        <span className="font-medium text-sm text-blue-400">{msg.username}</span>
-                        <span className="text-xs text-gray-500">
-                          {msg.created_at ? new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                        </span>
+                  <div key={msg.id} className={`flex gap-2 animate-slide-in ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}>
+                    {/* Аватар */}
+                    <div className="flex-shrink-0">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+                        isOwn ? 'bg-blue-600' : 'bg-indigo-600'
+                      }`}>
+                        {msg.username?.charAt(0).toUpperCase() || '?'}
                       </div>
-                      {room?.status !== 'ended' && room?.status !== 'archived' && (
-                        <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {msg.user_id === currentUser?.id && !msg.deleted_at && (
-                            <>
-                              <button 
-                                onClick={() => setEditingMessage(msg)}
-                                className="text-gray-400 hover:text-yellow-400"
-                              >
-                                <Edit3 className="w-3.5 h-3.5" />
-                              </button>
-                              <button 
-                                onClick={() => {
-                                  if (confirm('Delete message?')) {
-                                    wsClient.send('delete_chat', { messageId: msg.id });
-                                  }
-                                }}
-                                className="text-gray-400 hover:text-red-400"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </>
-                          )}
-                          <button 
-                            onClick={() => setReplyTo(msg)}
-                            className="text-gray-400 hover:text-white"
-                          >
-                            <Reply className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      )}
                     </div>
                     
-                    <div className="rounded-lg rounded-tl-none p-3 text-sm bg-gray-700 text-gray-200">
-                      {msg.reply_to_id && (
-                        <div className="mb-2 pl-2 border-l-2 border-gray-500 text-xs text-gray-400 italic line-clamp-1">
-                          {messages.find(m => m.id === msg.reply_to_id)?.message || 'Reply to a message'}
-                        </div>
-                      )}
+                    {/* Сообщение */}
+                    <div className={`flex flex-col max-w-[70%] ${isOwn ? 'items-end' : 'items-start'}`}>
+                      <div className={`flex items-center gap-2 mb-1 text-xs ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}>
+                        <span className="font-medium text-blue-400">{msg.username}</span>
+                        <span className="text-gray-500 text-[10px]">
+                          {msg.created_at ? formatTimeAgo(msg.created_at) : ''}
+                        </span>
+                      </div>
                       
-                      {editingMessage?.id === msg.id ? (
-                        <div className="flex items-center space-x-2">
-                          <input
-                            type="text"
-                            value={editingMessage.message}
-                            onChange={(e) => setEditingMessage({ ...editingMessage, message: e.target.value })}
-                            className="flex-1 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-white"
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                wsClient.send('edit_chat', { messageId: msg.id, message: editingMessage.message });
-                                setEditingMessage(null);
-                              }
-                              if (e.key === 'Escape') setEditingMessage(null);
-                            }}
-                            autoFocus
-                          />
-                          <button onClick={() => {
-                            wsClient.send('edit_chat', { messageId: msg.id, message: editingMessage.message });
-                            setEditingMessage(null);
-                          }} className="text-green-400 hover:text-green-300">
-                            <Send className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => setEditingMessage(null)} className="text-gray-400 hover:text-gray-300">
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          {msg.message}
-                          {msg.deleted_at && <span className="text-xs text-gray-500 italic ml-2">(deleted)</span>}
-                          {msg.edited_at && <span className="text-xs text-gray-500 italic ml-2">(edited)</span>}
-                        </>
-                      )}
+                      <div className={`rounded-2xl px-4 py-2 text-sm break-words relative group ${
+                        isOwn ? 'bg-blue-600 text-white rounded-tr-sm' : 'bg-gray-700 text-gray-200 rounded-tl-sm'
+                      }`}>
+                        {msg.reply_to_id && (
+                          <div className="mb-1 pb-1 border-b border-white/20 text-xs opacity-70">
+                            ↳ {messages.find(m => m.id === msg.reply_to_id)?.message?.substring(0, 50)}
+                          </div>
+                        )}
+                        
+                        {msg.deleted_at ? (
+                          <span className="text-gray-400 italic">{ru.chat.deleted}</span>
+                        ) : (
+                          <>
+                            {msg.message}
+                            {msg.edited_at && <span className="text-xs ml-2 opacity-50">({ru.chat.edited})</span>}
+                          </>
+                        )}
+                        
+                        {/* Кнопки действий при наведении - только для неудалённых сообщений */}
+                        {room?.status !== 'ended' && room?.status !== 'archived' && !msg.deleted_at && (
+                          <div className={`absolute top-1/2 -translate-y-1/2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity ${
+                            isOwn ? '-left-16 flex-row-reverse' : '-right-16'
+                          }`}>
+                            {isOwn && (
+                              <>
+                                <button 
+                                  onClick={() => {
+                                    setEditingMessage(msg);
+                                    setChatInput(msg.message);
+                                  }}
+                                  className="p-1 rounded-full bg-gray-700 hover:bg-yellow-600 text-gray-400 hover:text-white transition-colors"
+                                  title={ru.chat.edit}
+                                >
+                                  <Edit3 className="w-3 h-3" />
+                                </button>
+                                <button 
+                                  onClick={() => {
+                                    setConfirmDialog({
+                                      isOpen: true,
+                                      title: "Удалить сообщение?",
+                                      message: "Вы уверены, что хотите удалить это сообщение?",
+                                      danger: false,
+                                      onConfirm: () => {
+                                        wsClient.send('delete_chat', { messageId: msg.id });
+                                        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+                                      }
+                                    });
+                                  }}
+                                  className="p-1 rounded-full bg-gray-700 hover:bg-red-600 text-gray-400 hover:text-white transition-colors"
+                                  title={ru.chat.delete}
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </>
+                            )}
+                            <button 
+                              onClick={() => setReplyTo(msg)}
+                              className="p-1 rounded-full bg-gray-700 hover:bg-blue-600 text-gray-400 hover:text-white transition-colors"
+                              title={ru.chat.reply}
+                            >
+                              <Reply className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -927,27 +1272,43 @@ const toggleMic = () => {
               <div ref={chatEndRef} />
             </div>
 
+            {/* Форма ввода */}
             {room?.status !== 'ended' && room?.status !== 'archived' ? (
-              <div className="p-3 border-t border-gray-700 bg-gray-800 flex flex-col">
+              <div className="p-3 border-t border-gray-700 bg-gray-800">
+                {/* Reply indicator */}
                 {replyingTo && (
-                  <div className="flex items-center justify-between bg-gray-700/50 px-3 py-1.5 rounded-t-md border-b border-gray-600">
-                    <div className="flex items-center space-x-2 text-xs text-gray-300 truncate">
+                  <div className="flex items-center justify-between bg-gray-700/50 px-3 py-2 rounded-t-lg border-b border-gray-600">
+                    <div className="flex items-center gap-2 text-xs text-gray-300 truncate">
                       <Reply className="w-3 h-3" />
                       <span className="font-medium">{replyingTo.username}:</span>
-                      <span className="truncate">{replyingTo.message}</span>
+                      <span className="truncate">{replyingTo.message.substring(0, 50)}</span>
                     </div>
                     <button onClick={() => setReplyTo(null)} className="text-gray-400 hover:text-white">
                       <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 )}
-                <form onSubmit={handleSendMessage} className="relative">
+                
+                {/* Edit indicator */}
+                {editingMessage && (
+                  <div className="flex items-center justify-between bg-gray-700/50 px-3 py-2 rounded-t-lg border-b border-gray-600">
+                    <div className="flex items-center gap-2 text-xs text-gray-300">
+                      <Edit3 className="w-3 h-3" />
+                      <span>Редактирование сообщения</span>
+                    </div>
+                    <button onClick={() => setEditingMessage(null)} className="text-gray-400 hover:text-white">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+                
+                <form onSubmit={editingMessage ? handleEditMessage : handleSendMessage} className="relative">
                   <input
                     type="text"
                     value={chatInput}
                     onChange={handleTyping}
-                    placeholder="Send a message..."
-                    className={`w-full bg-gray-900 border border-gray-600 pl-4 pr-12 py-2.5 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 ${replyingTo ? 'rounded-b-md' : 'rounded-full'}`}
+                    placeholder={ru.chat.placeholder}
+                    className="w-full bg-gray-700 text-gray-100 border border-gray-600 rounded-xl pl-4 pr-12 py-2.5 text-sm focus:outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-all"
                   />
                   <button 
                     type="submit"
@@ -959,8 +1320,8 @@ const toggleMic = () => {
                 </form>
               </div>
             ) : (
-              <div className="p-3 border-t border-gray-700 bg-gray-800 text-center">
-                <span className="text-xs text-gray-500">Meeting has ended</span>
+              <div className="p-4 border-t border-gray-700 bg-gray-800 text-center">
+                <span className="text-xs text-gray-500">Встреча завершена</span>
               </div>
             )}
           </div>
@@ -970,6 +1331,17 @@ const toggleMic = () => {
       {/* Bottom Control Bar — только для активных встреч */}
       {(room?.status !== 'ended' && room?.status !== 'archived') ? (
         <div className="h-20 bg-gray-800 border-t border-gray-700 flex items-center justify-center px-6 shrink-0 space-x-4">
+
+          {/* <button 
+            onClick={() => {
+              console.log('Manual start audio');
+              startAudio();
+            }}
+            className="p-4 rounded-full bg-yellow-500 hover:bg-yellow-600 text-white"
+            title="Debug: Force start audio"
+          >
+            <Mic className="w-6 h-6" />
+          </button> */}
           
           {/* Кнопка микрофона — единая: выкл / вкл / muted */}
           <button 
@@ -996,17 +1368,17 @@ const toggleMic = () => {
           </button>
 
           {/* Настройки */}
-          <button className="p-4 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors" title="Settings">
+          <button className="p-4 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors" title={ru.room.settings}>
             <Settings className="w-6 h-6" />
           </button>
           
           {/* Поделиться */}
-          <button className="p-4 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors" title="Share">
+          <button className="p-4 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors" title={ru.room.share}>
             <Share className="w-6 h-6" />
           </button>
           
           {/* Ещё */}
-          <button className="p-4 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors" title="More">
+          <button className="p-4 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors" title={ru.room.more}>
             <MoreVertical className="w-6 h-6" />
           </button>
 
@@ -1018,14 +1390,14 @@ const toggleMic = () => {
             className="px-6 py-3 rounded-full bg-red-600 hover:bg-red-700 text-white font-medium flex items-center space-x-2 transition-colors"
           >
             <PhoneOff className="w-5 h-5" />
-            <span>Leave</span>
+            <span>{ru.room.leave}</span>
           </button>
           
           {/* Завершить встречу (только организатор) */}
           {room?.creator_id === currentUser?.id && (
             <button onClick={handleEndMeeting} className="px-6 py-3 rounded-full bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 font-medium flex items-center space-x-2 transition-colors">
               <AlertTriangle className="w-5 h-5" />
-              <span>End Meeting</span>
+              <span>{ru.room.endMeeting}</span>
             </button>
           )}
         </div>
@@ -1037,7 +1409,7 @@ const toggleMic = () => {
             className="px-6 py-3 rounded-full bg-gray-700 hover:bg-gray-600 text-white font-medium flex items-center space-x-2 transition-colors"
           >
             <PhoneOff className="w-5 h-5" />
-            <span>Back to Dashboard</span>
+            <span>{ru.room.backToDashboard}</span>
           </button>
         </div>
       )}
@@ -1047,6 +1419,17 @@ const toggleMic = () => {
         onClose={() => setIsProtocolViewerOpen(false)} 
         protocol={MOCK_PROTOCOL} 
       />
+
+      {/* Модальное окно подтверждения - ВСТАВЬТЕ ЭТО ЗДЕСЬ */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        onConfirm={() => confirmDialog.onConfirm()}
+        onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+        danger={confirmDialog.danger}
+      />
+
     </div>
   );
 }

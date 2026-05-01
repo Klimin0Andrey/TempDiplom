@@ -14,16 +14,16 @@ export default function JoinRoom() {
     const resolveInvite = async () => {
       const token = localStorage.getItem('accessToken');
       
+      // Нет токена → на логин
       if (!token) {
-        // Сохраняем путь И в state, И в sessionStorage (на случай перезагрузки страницы логина)
-        const returnPath = location.pathname + location.search;
+        const returnPath = `/join/${inviteCode}`;
         sessionStorage.setItem('redirectAfterLogin', returnPath);
         navigate('/login', { state: { returnTo: returnPath } });
         return;
       }
 
       try {
-        const response = await api.rooms.list(); 
+        const response = await api.rooms.list({ limit: 100 }); 
         const room = response.rooms.find(r => r.invite_code === inviteCode);
 
         if (room) {
@@ -32,12 +32,22 @@ export default function JoinRoom() {
             return;
           }
           navigate(`/room/${room.id}`);
-        }
-        else {
+        } else {
           setError("Invalid or expired invite link. Please check the code.");
         }
       } catch (err: any) {
         console.error("Join error:", err);
+        
+        // 🟢 НОВОЕ: Если ошибка валидации (401) — токен протух, чистим и редиректим на логин
+        if (err.status === 401) {
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+          const returnPath = `/join/${inviteCode}`;
+          sessionStorage.setItem('redirectAfterLogin', returnPath);
+          navigate('/login', { state: { returnTo: returnPath } });
+          return;
+        }
+        
         setError("Unable to connect to the server. Please try again later.");
       }
     };
