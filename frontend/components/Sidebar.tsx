@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Calendar, Users, Settings as SettingsIcon, LogOut, Mic, FileText, ChevronLeft, ChevronRight, HelpCircle } from 'lucide-react';
+import { Calendar, Users, Settings as SettingsIcon, LogOut, Mic, FileText, ChevronLeft, ChevronRight, HelpCircle, TrendingUp  } from 'lucide-react';
 
 export default function Sidebar() {
   const navigate = useNavigate();
@@ -34,6 +34,7 @@ export default function Sidebar() {
     { path: '/dashboard', icon: Calendar, label: 'Встречи' },
     { path: '/protocols', icon: FileText, label: 'Протоколы' },
     { path: '/team', icon: Users, label: 'Команда' },
+    { path: '/analytics', icon: TrendingUp, label: 'Аналитика' },
     { path: '/settings', icon: SettingsIcon, label: 'Настройки' },
     { path: '/support', icon: HelpCircle, label: 'Помощь' },
   ];

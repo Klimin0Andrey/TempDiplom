@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text, select
 from dotenv import load_dotenv
 from database import engine, Base, get_db, AsyncSessionLocal
-from routers import auth, rooms, websockets, protocols, support
+from routers import auth, rooms, websockets, protocols, support, analytics
 from middleware.rate_limit import RateLimitMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import models
@@ -42,7 +42,8 @@ app.include_router(auth.router)
 app.include_router(rooms.router)
 app.include_router(websockets.router)
 app.include_router(protocols.router)
-app.include_router(support.router)
+app.include_router(support.router, prefix="/api")
+app.include_router(analytics.router, prefix="/api/analytics")
 
 scheduler = AsyncIOScheduler()
 

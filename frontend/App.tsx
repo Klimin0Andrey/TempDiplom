@@ -19,6 +19,7 @@ import Blog from './pages/docs/Blog';
 import About from './pages/About.tsx';   
 import Contacts from './pages/Contacts.tsx'; 
 import FAQ from './pages/FAQ.tsx'; 
+import Analytics from './pages/Analytics';
 
 export default function App() {
   return (
@@ -48,6 +49,7 @@ export default function App() {
         <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
         <Route path="/room/:roomId" element={<ProtectedRoute><Room /></ProtectedRoute>} />
         <Route path="/support" element={<ProtectedRoute><Support /></ProtectedRoute>} />
+        <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
         
 
         {/* Редирект на лендинг для неизвестных путей */}

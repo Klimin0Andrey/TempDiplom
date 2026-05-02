@@ -138,4 +138,7 @@ export const api = {
         body: JSON.stringify(data) 
       }),
   },
+  analytics: {
+    getDashboard: () => fetchApi<any>('/analytics/dashboard', { method: 'GET' }),
+  },
 };
