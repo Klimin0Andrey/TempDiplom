@@ -1,9 +1,33 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
+import redis.asyncio as redis
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
+
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+# Глобальный клиент Redis (один на всё приложение)
+_redis_client = None
+
+async def get_redis_client():
+    """Получить глобальный клиент Redis."""
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+    return _redis_client
+
+async def close_redis():
+    """Закрыть соединение с Redis при завершении приложения."""
+    global _redis_client
+    if _redis_client:
+        await _redis_client.close()
+        _redis_client = None
+
+async def get_redis():
+    """Deprecated: используйте get_redis_client()"""
+    return await get_redis_client()
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL", 
@@ -36,20 +60,3 @@ async def get_db():
             yield session
         finally:
             await session.close()
-            
-            
-import redis.asyncio as redis
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
-
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-
-async def get_redis():
-    """Создаёт подключение к Redis."""
-    r = redis.from_url(REDIS_URL, decode_responses=True)
-    try:
-        yield r
-    finally:
-        await r.close()

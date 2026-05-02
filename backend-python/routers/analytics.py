@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import models
 from dependencies import get_current_user
 from database import AsyncSessionLocal
+from services.cache import get_cached, set_cached, invalidate_cache
 
 router = APIRouter(tags=["Analytics"])
 
@@ -13,19 +14,28 @@ async def get_analytics_dashboard(current_user: models.User = Depends(get_curren
     if current_user.role not in [models.RoleEnum.owner, models.RoleEnum.admin]:
         raise HTTPException(status_code=403, detail="Доступ только для руководства")
 
-    async with AsyncSessionLocal() as db:
-        org_id = current_user.organization_id
+    org_id = str(current_user.organization_id)
+    cache_key = f"analytics:org_{org_id}"
+    
+    # Пробуем получить из кэша
+    cached_data = await get_cached("analytics", cache_key)
+    if cached_data:
+        print(f"✅ Analytics Cache HIT for {cache_key}")
+        return cached_data
+    
+    print(f"❌ Analytics Cache MISS for {cache_key}")
 
+    async with AsyncSessionLocal() as db:
         # 1. Всего проведено встреч
         res_meetings = await db.execute(
-            select(func.count(models.Room.id)).where(models.Room.organization_id == org_id)
+            select(func.count(models.Room.id)).where(models.Room.organization_id == current_user.organization_id)
         )
         total_meetings = res_meetings.scalar() or 0
 
         # 2. Общее время в часах
         res_duration = await db.execute(
             select(func.sum(models.Room.duration_seconds))
-            .where(models.Room.organization_id == org_id, models.Room.duration_seconds != None)
+            .where(models.Room.organization_id == current_user.organization_id, models.Room.duration_seconds != None)
         )
         total_seconds = res_duration.scalar() or 0
         total_hours = round(total_seconds / 3600, 1)
@@ -35,7 +45,7 @@ async def get_analytics_dashboard(current_user: models.User = Depends(get_curren
 
         # 3. Всего сотрудников
         res_users = await db.execute(
-            select(func.count(models.User.id)).where(models.User.organization_id == org_id)
+            select(func.count(models.User.id)).where(models.User.organization_id == current_user.organization_id)
         )
         total_users = res_users.scalar() or 0
 
@@ -43,7 +53,7 @@ async def get_analytics_dashboard(current_user: models.User = Depends(get_curren
         res_protocols = await db.execute(
             select(func.count(models.Protocol.id))
             .join(models.Room, models.Protocol.room_id == models.Room.id)
-            .where(models.Room.organization_id == org_id)
+            .where(models.Room.organization_id == current_user.organization_id)
         )
         total_protocols = res_protocols.scalar() or 0
 
@@ -57,7 +67,7 @@ async def get_analytics_dashboard(current_user: models.User = Depends(get_curren
                 func.count(models.Room.id).label('count')
             )
             .where(
-                models.Room.organization_id == org_id,
+                models.Room.organization_id == current_user.organization_id,
                 models.Room.created_at >= six_months_ago
             )
             .group_by('month')
@@ -75,7 +85,7 @@ async def get_analytics_dashboard(current_user: models.User = Depends(get_curren
                 func.count(models.Room.id).label('count')
             )
             .where(
-                models.Room.organization_id == org_id,
+                models.Room.organization_id == current_user.organization_id,
                 models.Room.started_at != None
             )
             .group_by('hour')
@@ -87,7 +97,7 @@ async def get_analytics_dashboard(current_user: models.User = Depends(get_curren
             for row in res_peak_hours
         ]
 
-        # 7. Самые активные пользователи (по количеству встреч)
+        # 7. Самые активные пользователи
         res_active_users = await db.execute(
             select(
                 models.User.first_name,
@@ -97,7 +107,7 @@ async def get_analytics_dashboard(current_user: models.User = Depends(get_curren
             .join(models.Participant, models.User.id == models.Participant.user_id)
             .join(models.Room, models.Participant.room_id == models.Room.id)
             .where(
-                models.User.organization_id == org_id,
+                models.User.organization_id == current_user.organization_id,
                 models.Room.status == models.RoomStatusEnum.ended
             )
             .group_by(models.User.id)
@@ -119,7 +129,7 @@ async def get_analytics_dashboard(current_user: models.User = Depends(get_curren
                 models.Room.status,
                 func.count(models.Room.id).label('count')
             )
-            .where(models.Room.organization_id == org_id)
+            .where(models.Room.organization_id == current_user.organization_id)
             .group_by(models.Room.status)
         )
         
@@ -128,7 +138,7 @@ async def get_analytics_dashboard(current_user: models.User = Depends(get_curren
             for row in res_status
         ]
 
-        return {
+        result_data = {
             "total_meetings": total_meetings,
             "total_hours": total_hours,
             "ai_saved_hours": ai_saved_hours,
@@ -139,3 +149,8 @@ async def get_analytics_dashboard(current_user: models.User = Depends(get_curren
             "active_users": active_users,
             "status_distribution": status_distribution
         }
+        
+        # Сохраняем в кэш на 5 минут (300 секунд)
+        await set_cached("analytics", cache_key, result_data, ttl=300)
+        
+        return result_data

@@ -10,7 +10,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import models
 from services.email import send_meeting_reminder_email
 from datetime import datetime, timedelta
+from database import close_redis
 import logging
+
 
 load_dotenv()
 
@@ -101,6 +103,7 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown():
     scheduler.shutdown()
+    await close_redis()
 
 
 @app.get("/api/health")
@@ -121,4 +124,4 @@ async def health_check(db: AsyncSession = Depends(get_db)):
         result["redis"] = str(e)
     
     status = "ok" if all(v == "connected" for v in result.values()) else "degraded"
-    return {"status": status, **result}
+    return {"status": status, **result}     

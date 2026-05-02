@@ -10,6 +10,7 @@ from dependencies import get_current_active_user, RequireRole
 from models import RoomStatusEnum, RoleEnum
 from fastapi import BackgroundTasks
 from services.email import send_room_invite_email, send_room_invite_email_with_ics
+from services.cache import get_cached, set_cached, invalidate_cache
 
 router = APIRouter(prefix="/api/rooms", tags=["Rooms"])
 
@@ -120,6 +121,7 @@ async def create_room(
         role_in_room="organizer",
     ))
     await db.commit()
+    await invalidate_cache("rooms_list")
     await db.refresh(new_room)
 
     return {
@@ -148,21 +150,23 @@ async def get_rooms(
     db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(get_current_active_user),
 ):
+    # Формируем ключ кэша
+    org_id = current_user.organization_id
+    cache_key = f"rooms:org_{org_id}:status_{status_filter or 'all'}:limit_{limit}:offset_{offset}"
+    
+    # Пробуем получить из кэша
+    cached_data = await get_cached("rooms_list", cache_key)
+    if cached_data:
+        print(f"✅ Cache HIT for {cache_key}")
+        return cached_data
+    
+    print(f"❌ Cache MISS for {cache_key}")
+    
     query = (
         select(models.Room, models.User.first_name, models.User.last_name)
         .outerjoin(models.User, models.Room.creator_id == models.User.id)
         .where(models.Room.organization_id == current_user.organization_id)
     )
-
-    # Тут ограничение по роля кто может видеть комнаты, была еще мысл сделать возможным создавать комныты с разным статусом: Приватные и открытые
-    # if current_user.role not in [RoleEnum.owner, RoleEnum.admin]:
-    #     participant_room_ids = select(models.Participant.room_id).where(
-    #         models.Participant.user_id == current_user.id
-    #     )
-    #     query = query.where(
-    #         (models.Room.creator_id == current_user.id)
-    #         | (models.Room.id.in_(participant_room_ids))
-    #     )
 
     if status_filter and status_filter not in ("all", "undefined", ""):
         query = query.where(models.Room.status == status_filter)
@@ -171,7 +175,6 @@ async def get_rooms(
     result = await db.execute(query)
     rows = result.all()
 
-    # ОПТИМИЗАЦИЯ: Один запрос для подсчёта участников всех комнат
     room_ids = [r.id for r, _, _ in rows]
     participants_count_map = {}
     if room_ids:
@@ -218,13 +221,18 @@ async def get_rooms(
             "updated_at": r.updated_at,
         })
 
-    return {
+    result_data = {
         "success": True,
         "rooms": room_responses,
         "total": total,
         "limit": limit,
         "offset": offset,
     }
+    
+    # Сохраняем в кэш на 30 секунд
+    await set_cached("rooms_list", cache_key, result_data, ttl=30)
+    
+    return result_data
 
 
 # 3. ДЕТАЛИ КОМНАТЫ (с JOIN для имени создателя)
@@ -451,6 +459,7 @@ async def update_room(
         room.scheduled_start_at = request.scheduled_start_at.replace(tzinfo=None) if request.scheduled_start_at else None
 
     await db.commit()
+    await invalidate_cache("rooms_list")
     await db.refresh(room)
 
     return {
@@ -479,6 +488,7 @@ async def delete_room(
     room = await _get_room_with_permissions(room_id, db, current_user)
     await db.delete(room)
     await db.commit()
+    await invalidate_cache("rooms_list")
     return None
 
 
@@ -535,6 +545,7 @@ async def end_meeting(
         room.duration_seconds = int(duration.total_seconds())
         
     await db.commit()
+    await invalidate_cache("analytics")
     # Уведомляем всех участников через WebSocket
     try:
         from routers.websockets import manager
