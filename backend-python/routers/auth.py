@@ -321,6 +321,32 @@ async def update_user(
 
     await db.commit()
     await db.refresh(user)
+    
+    # ========== НОВЫЙ КОД: Отправляем WebSocket уведомление ==========
+    # Импортируем менеджер соединений (в файле websockets.py)
+    from .websockets import manager
+    
+    # Отправляем уведомление обновлённому пользователю
+    user_data = {
+        "type": "user_updated",
+        "user": {
+            "id": str(user.id),
+            "email": user.email,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "role": user.role,
+            "status": user.status
+        }
+    }
+    
+    # Пытаемся отправить через WebSocket (если пользователь онлайн)
+    try:
+        # Ищем комнаты, где пользователь онлайн - отправляем глобальное событие
+        await manager.send_to_user(str(user.id), user_data)
+    except Exception as e:
+        print(f"⚠️ Failed to send WebSocket notification to user {user.id}: {e}")
+    # ========== КОНЕЦ НОВОГО КОДА ==========
+    
     return user
 
 @router.post("/forgot-password")

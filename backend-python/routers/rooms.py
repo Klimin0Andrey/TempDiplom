@@ -378,13 +378,13 @@ async def invite_to_room_by_email(
 
     # Передаем org_name последним аргументом
     background_tasks.add_task(
-        send_room_invite_email_with_ics, 
+        send_room_invite_email_with_ics if room.scheduled_start_at else send_room_invite_email,
         email, 
         room.name, 
         room.invite_code, 
         inviter,
         org_name,
-        room.scheduled_start_at
+        room.scheduled_start_at if room.scheduled_start_at else None
     )
     
     return {"success": True, "message": f"Invite sent to {email}"}

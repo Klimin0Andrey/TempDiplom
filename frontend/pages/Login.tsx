@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Mic, Lock, Mail, User, UserPlus, LogIn, Building2, CreditCard } from 'lucide-react';
+import { Mic, Lock, Mail, User, UserPlus, LogIn, Building2, CreditCard, Sparkles, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { api } from '../services/api.ts';
 import toast from 'react-hot-toast';
 
@@ -12,6 +12,7 @@ export default function Login() {
   // Form state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [orgName, setOrgName] = useState('');
@@ -23,7 +24,6 @@ export default function Login() {
     if (params.get('mode') === 'register') {
       setIsLogin(false);
     }
-    // Предзаполнить тариф из URL
     const plan = params.get('plan');
     if (plan && ['light', 'pro', 'business'].includes(plan)) {
       setSelectedTier(plan);
@@ -61,31 +61,34 @@ export default function Login() {
       sessionStorage.removeItem('redirectAfterLogin');
       
       navigate(destination, { replace: true });
+      toast.success(isLogin ? 'Добро пожаловать!' : 'Организация успешно зарегистрирована!');
     } catch (err: any) {
       console.error('Auth error:', err);
-      toast.error(err.message || 'Authentication failed');
+      toast.error(err.message || 'Ошибка авторизации');
     }
   };
 
   const getTierInfo = () => {
     const tiers = {
-      light: { name: 'Light', price: 'Free', trial: 'Free forever' },
-      pro: { name: 'Pro', price: '2,999 ₽/month', trial: '14-day free trial' },
-      business: { name: 'Business', price: '9,999 ₽/month', trial: '30-day free trial' }
+      light: { name: 'Light', price: 'Бесплатно', trial: 'Навсегда бесплатно' },
+      pro: { name: 'Pro', price: '2 999 ₽/мес', trial: '14 дней бесплатно' },
+      business: { name: 'Business', price: '9 999 ₽/мес', trial: '30 дней бесплатно' }
     };
     return tiers[selectedTier as keyof typeof tiers];
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 transition-all">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 transition-all duration-300 hover:shadow-2xl">
         <div className="flex flex-col items-center mb-8">
-          <div className="bg-blue-600 p-3 rounded-2xl mb-4 shadow-lg shadow-blue-600/30">
+          <div className="bg-gradient-to-r from-blue-600 to-blue-500 p-3 rounded-2xl mb-4 shadow-lg shadow-blue-600/30">
             <Mic className="w-8 h-8 text-white" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900">IntelliConf Platform</h2>
+          <h2 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+            Potalkyem
+          </h2>
           <p className="text-gray-500 text-sm mt-2 text-center">
-            {isLogin ? 'Sign in to your account' : 'Register your organization and create an admin account'}
+            {isLogin ? 'Войдите в свой аккаунт' : 'Зарегистрируйте организацию и создайте аккаунт администратора'}
           </p>
         </div>
 
@@ -94,7 +97,7 @@ export default function Login() {
             <>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Organization Name <span className="text-red-500">*</span>
+                  Название организации <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -103,18 +106,17 @@ export default function Login() {
                   <input
                     type="text"
                     required={!isLogin}
-                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-shadow"
-                    placeholder="Acme Corp"
+                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-all"
+                    placeholder="ООО «Ромашка»"
                     value={orgName}
                     onChange={(e) => setOrgName(e.target.value)}
                   />
                 </div>
               </div>
               
-              {/* Select Plan Dropdown */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Select Plan <span className="text-red-500">*</span>
+                  Выберите тариф <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -122,16 +124,16 @@ export default function Login() {
                   </div>
                   <select
                     required={!isLogin}
-                    className="block w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-shadow appearance-none bg-white"
+                    className="block w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-all appearance-none bg-white cursor-pointer"
                     value={selectedTier}
                     onChange={(e) => {
                       setSelectedTier(e.target.value);
                       setShowTrialInfo(true);
                     }}
                   >
-                    <option value="light">Light - Free forever</option>
-                    <option value="pro">Pro - 2,999 ₽/month (14-day free trial)</option>
-                    <option value="business">Business - 9,999 ₽/month (30-day free trial)</option>
+                    <option value="light">Light - Бесплатно навсегда</option>
+                    <option value="pro">Pro - 2 999 ₽/мес (14 дней бесплатно)</option>
+                    <option value="business">Business - 9 999 ₽/мес (30 дней бесплатно)</option>
                   </select>
                   <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
                     <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -140,16 +142,18 @@ export default function Login() {
                   </div>
                 </div>
                 
-                {/* Trial period info */}
-                {(showTrialInfo || selectedTier !== 'light') && selectedTier !== 'light' && (
-                  <div className="mt-2 text-xs text-blue-600 bg-blue-50 p-2 rounded-lg">
-                    ✨ {getTierInfo().trial} included with this plan
+                {selectedTier !== 'light' && (
+                  <div className="mt-3 bg-gradient-to-r from-blue-50 to-indigo-50 p-3 rounded-lg border border-blue-100">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-blue-600" />
+                      <span className="text-xs font-semibold text-blue-700">{getTierInfo().trial}</span>
+                    </div>
                   </div>
                 )}
                 
                 {selectedTier === 'light' && (
-                  <div className="mt-2 text-xs text-gray-500">
-                    ℹ️ Free plan includes AI Protocols (STT + LLM) with limited features
+                  <div className="mt-2 text-xs text-gray-500 bg-gray-50 p-2 rounded-lg">
+                    Бесплатный тариф включает AI Протоколы (STT + LLM) с базовыми возможностями
                   </div>
                 )}
               </div>
@@ -157,7 +161,7 @@ export default function Login() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Admin First Name <span className="text-red-500">*</span>
+                    Имя администратора <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -166,8 +170,8 @@ export default function Login() {
                     <input
                       type="text"
                       required={!isLogin}
-                      className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-shadow"
-                      placeholder="Ivan"
+                      className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-all"
+                      placeholder="Иван"
                       value={firstName}
                       onChange={(e) => setFirstName(e.target.value)}
                     />
@@ -175,12 +179,12 @@ export default function Login() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Admin Last Name
+                    Фамилия
                   </label>
                   <input
                     type="text"
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-shadow"
-                    placeholder="Ivanov"
+                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-all"
+                    placeholder="Иванов"
                     value={lastName}
                     onChange={(e) => setLastName(e.target.value)}
                   />
@@ -191,7 +195,7 @@ export default function Login() {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email Address <span className="text-red-500">*</span>
+              Почта <span className="text-red-500">*</span>
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -200,7 +204,7 @@ export default function Login() {
               <input
                 type="email"
                 required
-                className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-shadow"
+                className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-all"
                 placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -210,21 +214,28 @@ export default function Login() {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Password <span className="text-red-500">*</span>
+              Пароль <span className="text-red-500">*</span>
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Lock className="h-5 w-5 text-gray-400" />
               </div>
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 required
                 minLength={6}
-                className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-shadow"
+                className="block w-full pl-10 pr-12 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-all"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+              </button>
             </div>
           </div>
 
@@ -235,24 +246,27 @@ export default function Login() {
                 onClick={() => navigate('/forgot-password')}
                 className="text-xs font-medium text-blue-600 hover:text-blue-500 transition-colors"
               >
-                Forgot password?
+                Забыли пароль?
               </button>
             </div>
           )}
 
           <button
             type="submit"
-            className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors mt-6"
+            className="w-full group flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all mt-6"
           >
             {isLogin ? (
               <>
-                <LogIn className="w-4 h-4 mr-2" /> Sign In
+                <LogIn className="w-4 h-4 mr-2 group-hover:scale-110 transition-transform" /> 
+                Войти
               </>
             ) : (
               <>
-                <UserPlus className="w-4 h-4 mr-2" /> Register Organization
+                <UserPlus className="w-4 h-4 mr-2 group-hover:scale-110 transition-transform" /> 
+                Зарегистрировать организацию
               </>
             )}
+            <ArrowRight className="w-4 h-4 ml-2 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
           </button>
         </form>
 
@@ -262,7 +276,7 @@ export default function Login() {
             onClick={() => setIsLogin(!isLogin)}
             className="text-sm font-medium text-blue-600 hover:text-blue-500 transition-colors"
           >
-            {isLogin ? "Don't have an account? Register Organization" : "Already have an account? Sign in"}
+            {isLogin ? "Нет аккаунта? Зарегистрировать организацию" : "Уже есть аккаунт? Войти"}
           </button>
         </div>
       </div>

@@ -21,3 +21,7 @@
 .animate-slide-in {
   animation: slideIn 0.2s ease-out;
 }
+
+.scroll-mt-20 {
+  scroll-margin-top: 80px;
+}

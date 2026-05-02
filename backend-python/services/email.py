@@ -63,53 +63,220 @@ async def send_email(to: str, subject: str, html_body: str, from_name: str = "In
         await asyncio.sleep(BATCH_DELAY)
 
 async def send_invite_email(email: str, first_name: str, token: str, org_name: str):
-    """Письмо-приглашение в ОРГАНИЗАЦИЮ."""
+    """Письмо-приглашение в организацию (на русском)."""
     setup_url = f"{FRONTEND_URL}/#/setup-password?token={token}"
+    
     html = f"""
-    <div style="font-family: sans-serif; max-width: 600px; margin: auto; border: 1px solid #e5e7eb; border-radius: 16px; padding: 40px;">
-        <h1 style="font-size: 20px;">Welcome to {org_name}!</h1>
-        <p>Hello {first_name}, you have been invited to join the team.</p>
-        <div style="margin: 30px 0;">
-            <a href="{setup_url}" style="background: #2563eb; color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px; font-weight: bold;">Create My Password</a>
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Приглашение в организацию - Potalkyem</title>
+    </head>
+    <body style="font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background-color: #f5f5f5;">
+        <div style="max-width: 560px; margin: 0 auto; background-color: #ffffff;">
+            <!-- Header -->
+            <div style="border-bottom: 1px solid #e0e0e0; padding: 24px 28px;">
+                <div style="font-size: 18px; font-weight: 600; color: #1a73e8;">Potalkyem</div>
+                <div style="font-size: 12px; color: #888888; margin-top: 4px;">Платформа для аудиоконференций</div>
+            </div>
+            
+            <!-- Content -->
+            <div style="padding: 32px 28px;">
+                <div style="font-size: 22px; font-weight: 600; color: #202124; margin-bottom: 16px;">
+                    Приглашение в организацию
+                </div>
+                
+                <p style="color: #5f6368; line-height: 1.5; margin-bottom: 24px;">
+                    Здравствуйте, {first_name}!
+                </p>
+                
+                <p style="color: #5f6368; line-height: 1.5; margin-bottom: 24px;">
+                    Администратор пригласил вас присоединиться к организации <strong style="color: #1a73e8;">{org_name}</strong> 
+                    на платформе аудиоконференций Potalkyem.
+                </p>
+                
+                <p style="color: #5f6368; line-height: 1.5; margin-bottom: 16px;">
+                    Для завершения регистрации и создания пароля, пожалуйста, перейдите по ссылке:
+                </p>
+                
+                <div style="margin: 32px 0;">
+                    <a href="{setup_url}" style="display: inline-block; background-color: #1a73e8; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 4px; font-size: 14px; font-weight: 500;">
+                        Завершить регистрацию
+                    </a>
+                </div>
+                
+                <div style="background-color: #f8f9fa; padding: 16px 20px; margin: 24px 0;">
+                    <p style="color: #5f6368; font-size: 13px; margin: 0;">
+                        <strong>Ссылка действительна:</strong> 7 дней
+                    </p>
+                    <p style="color: #5f6368; font-size: 13px; margin: 8px 0 0 0;">
+                        <strong>Почта для связи:</strong> <a href="mailto:support@potalkyem.ru" style="color: #1a73e8; text-decoration: none;">support@potalkyem.ru</a>
+                    </p>
+                </div>
+                
+                <p style="color: #9aa0a6; font-size: 11px; line-height: 1.5; margin-top: 24px; border-top: 1px solid #e0e0e0; padding-top: 20px;">
+                    Если вы не ожидали это приглашение, просто проигнорируйте данное письмо.
+                </p>
+            </div>
+            
+            <!-- Footer -->
+            <div style="border-top: 1px solid #e0e0e0; padding: 16px 28px; text-align: center;">
+                <p style="color: #9aa0a6; font-size: 11px; margin: 0;">
+                    © 2026 Potalkyem. Все права защищены.
+                </p>
+            </div>
         </div>
-    </div>
+    </body>
+    </html>
     """
-    # Передаем org_name как имя отправителя
-    await send_email(email, f"Invitation to join {org_name}", html, from_name=org_name)
+    
+    await send_email(email, f"Приглашение присоединиться к {org_name}", html, from_name=org_name)
 
-# ИСПРАВЛЕНО: Добавлен параметр org_name
 async def send_room_invite_email(email: str, room_name: str, invite_code: str, inviter_name: str, org_name: str):
-    """Письмо-приглашение в КОНКРЕТНУЮ КОМНАТУ."""
+    """Письмо-приглашение в комнату (на русском)."""
     join_url = f"{FRONTEND_URL}/#/join/{invite_code}"
+    
     html = f"""
-    <div style="font-family: sans-serif; max-width: 600px; margin: auto; border: 1px solid #e5e7eb; border-radius: 16px; padding: 40px;">
-        <h2 style="color: #2563eb;">Meeting Invitation</h2>
-        <p><b>{inviter_name}</b> from <b>{org_name}</b> has invited you to a conference:</p>
-        <div style="background: #f3f4f6; padding: 20px; border-radius: 12px; margin: 20px 0;">
-            <p style="margin: 0; font-weight: bold; font-size: 18px;">{room_name}</p>
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Приглашение на конференцию - Potalkyem</title>
+    </head>
+    <body style="font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background-color: #f5f5f5;">
+        <div style="max-width: 560px; margin: 0 auto; background-color: #ffffff;">
+            <!-- Header -->
+            <div style="border-bottom: 1px solid #e0e0e0; padding: 24px 28px;">
+                <div style="font-size: 18px; font-weight: 600; color: #1a73e8;">Potalkyem</div>
+                <div style="font-size: 12px; color: #888888; margin-top: 4px;">Платформа для аудиоконференций</div>
+            </div>
+            
+            <!-- Content -->
+            <div style="padding: 32px 28px;">
+                <div style="font-size: 22px; font-weight: 600; color: #202124; margin-bottom: 16px;">
+                    Приглашение на конференцию
+                </div>
+                
+                <p style="color: #5f6368; line-height: 1.5; margin-bottom: 16px;">
+                    {inviter_name} из организации <strong style="color: #1a73e8;">{org_name}</strong> 
+                    приглашает вас принять участие в аудиоконференции.
+                </p>
+                
+                <div style="background-color: #f8f9fa; padding: 20px; margin: 24px 0; border-left: 3px solid #1a73e8;">
+                    <p style="margin: 0; font-weight: 600; color: #202124;">{room_name}</p>
+                </div>
+                
+                <p style="color: #5f6368; line-height: 1.5; margin-bottom: 16px;">
+                    Для подключения к конференции нажмите на кнопку ниже:
+                </p>
+                
+                <div style="margin: 32px 0;">
+                    <a href="{join_url}" style="display: inline-block; background-color: #059669; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 4px; font-size: 14px; font-weight: 500;">
+                        Присоединиться к конференции
+                    </a>
+                </div>
+                
+                <div style="background-color: #f8f9fa; padding: 16px 20px; margin: 24px 0;">
+                    <p style="color: #5f6368; font-size: 13px; margin: 0;">
+                        <strong>Ссылка действительна:</strong> до окончания встречи
+                    </p>
+                    <p style="color: #5f6368; font-size: 13px; margin: 8px 0 0 0;">
+                        <strong>Для участия требуется:</strong> браузер с поддержкой WebRTC (Chrome, Firefox, Edge)
+                    </p>
+                </div>
+                
+                <p style="color: #9aa0a6; font-size: 11px; line-height: 1.5; margin-top: 24px; border-top: 1px solid #e0e0e0; padding-top: 20px;">
+                    Если вы не ожидали это приглашение, просто проигнорируйте данное письмо.
+                </p>
+            </div>
+            
+            <!-- Footer -->
+            <div style="border-top: 1px solid #e0e0e0; padding: 16px 28px; text-align: center;">
+                <p style="color: #9aa0a6; font-size: 11px; margin: 0;">
+                    © 2026 Potalkyem. Все права защищены.
+                </p>
+            </div>
         </div>
-        <a href="{join_url}" style="background: #059669; color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px; font-weight: bold;">Join Meeting</a>
-    </div>
+    </body>
+    </html>
     """
-    await send_email(email, f"Invitation: {room_name}", html, from_name=org_name)
+    
+    await send_email(email, f"Приглашение на конференцию: {room_name}", html, from_name=org_name)
 
 # Обнови функцию send_reset_password_email:
 async def send_reset_password_email(email: str, token: str, org_name: str):
-    """Письмо сброса пароля с указанием компании."""
+    """Письмо сброса пароля с указанием компании (на русском)."""
     reset_url = f"{FRONTEND_URL}/#/reset-password?token={token}"
 
     html = f"""
-    <div style="font-family: 'Segoe UI', sans-serif; max-width: 600px; margin: auto; border: 1px solid #e5e7eb; border-radius: 16px; padding: 40px; color: #1f2937;">
-        <h2 style="color: #ef4444; margin-top: 0;">Password Reset</h2>
-        <p>We received a request to reset your password for your account in <b>{org_name}</b>.</p>
-        <p>Click the button below to set a new password:</p>
-        <div style="text-align: center; margin: 32px 0;">
-            <a href="{reset_url}" style="background: #1f2937; color: white; padding: 14px 28px; text-decoration: none; border-radius: 10px; font-weight: bold; display: inline-block;">Reset Password</a>
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Сброс пароля - Potalkyem</title>
+    </head>
+    <body style="font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background-color: #f5f5f5;">
+        <div style="max-width: 560px; margin: 0 auto; background-color: #ffffff;">
+            <!-- Header -->
+            <div style="border-bottom: 1px solid #e0e0e0; padding: 24px 28px;">
+                <div style="font-size: 18px; font-weight: 600; color: #1a73e8;">Potalkyem</div>
+                <div style="font-size: 12px; color: #888888; margin-top: 4px;">Платформа для аудиоконференций</div>
+            </div>
+            
+            <!-- Content -->
+            <div style="padding: 32px 28px;">
+                <div style="font-size: 22px; font-weight: 600; color: #202124; margin-bottom: 16px;">
+                    Сброс пароля
+                </div>
+                
+                <p style="color: #5f6368; line-height: 1.5; margin-bottom: 24px;">
+                    Здравствуйте!
+                </p>
+                
+                <p style="color: #5f6368; line-height: 1.5; margin-bottom: 24px;">
+                    Мы получили запрос на сброс пароля для вашей учетной записи в организации <strong style="color: #1a73e8;">{org_name}</strong>.
+                </p>
+                
+                <p style="color: #5f6368; line-height: 1.5; margin-bottom: 16px;">
+                    Для создания нового пароля, пожалуйста, перейдите по ссылке:
+                </p>
+                
+                <div style="margin: 32px 0;">
+                    <a href="{reset_url}" style="display: inline-block; background-color: #1a73e8; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 4px; font-size: 14px; font-weight: 500;">
+                        Сбросить пароль
+                    </a>
+                </div>
+                
+                <div style="background-color: #f8f9fa; padding: 16px 20px; margin: 24px 0;">
+                    <p style="color: #5f6368; font-size: 13px; margin: 0;">
+                        <strong>Рекомендации по созданию пароля:</strong>
+                    </p>
+                    <p style="color: #5f6368; font-size: 13px; margin: 8px 0 0 20px;">
+                        • Минимальная длина — 8 символов<br>
+                        • Используйте буквы в разных регистрах<br>
+                        • Добавьте цифры и специальные символы
+                    </p>
+                </div>
+                
+                <p style="color: #9aa0a6; font-size: 11px; line-height: 1.5; margin-top: 24px; border-top: 1px solid #e0e0e0; padding-top: 20px;">
+                    Ссылка действительна в течение 24 часов.<br>
+                    Если вы не запрашивали сброс пароля, просто проигнорируйте это письмо.
+                </p>
+            </div>
+            
+            <!-- Footer -->
+            <div style="border-top: 1px solid #e0e0e0; padding: 16px 28px; text-align: center;">
+                <p style="color: #9aa0a6; font-size: 11px; margin: 0;">
+                    © 2026 Potalkyem. Все права защищены.
+                </p>
+            </div>
         </div>
-        <p style="font-size: 12px; color: #9ca3af;">If you didn't request this, you can safely ignore this email.</p>
-    </div>
+    </body>
+    </html>
     """
-    await send_email(email, f"Reset your password for {org_name}", html, from_name=org_name)
+    
+    await send_email(email, f"Сброс пароля для {org_name}", html, from_name="Potalkyem")
     
 def generate_ics_content(room_name: str, invite_code: str, org_name: str, scheduled_start_at: datetime = None) -> str:
     """Генерирует содержимое .ics файла для календаря."""
@@ -123,9 +290,12 @@ def generate_ics_content(room_name: str, invite_code: str, org_name: str, schedu
     dtstamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
     uid = f"{invite_code}@potalkyem"
     
+    # Кодируем русский текст
+    description = f"Приглашение на конференцию в организации {org_name}\\n\\nСсылка для подключения: {join_url}"
+    
     return f"""BEGIN:VCALENDAR
 VERSION:2.0
-PRODID:-//Potalkyem//Conference Platform//EN
+PRODID:-//Potalkyem//Conference Platform//RU
 METHOD:REQUEST
 BEGIN:VEVENT
 UID:{uid}
@@ -133,7 +303,7 @@ DTSTAMP:{dtstamp}
 DTSTART:{dtstart}
 DTEND:{dtend}
 SUMMARY:{room_name}
-DESCRIPTION:You have been invited to a conference in {org_name}.\\n\\nJoin: {join_url}
+DESCRIPTION:{description}
 LOCATION:Online ({join_url})
 ORGANIZER;CN={org_name}:MAILTO:noreply@potalkyem.com
 STATUS:CONFIRMED
@@ -145,29 +315,86 @@ async def send_room_invite_email_with_ics(
     email: str, room_name: str, invite_code: str, inviter_name: str, 
     org_name: str, scheduled_start_at: datetime = None
 ):
-    """Письмо-приглашение в комнату с вложением .ics для календаря."""
+    """Письмо-приглашение в комнату с вложением .ics для календаря (на русском)."""
     join_url = f"{FRONTEND_URL}/#/join/{invite_code}"
     
     ics_content = generate_ics_content(room_name, invite_code, org_name, scheduled_start_at)
     
     msg = MIMEMultipart("mixed")
-    display_name = f"{org_name} via Potalkyem"
-    safe_name = display_name.replace("(", "").replace(")", "")
     msg["From"] = f"{org_name} <{MAIL_FROM}>"
     msg["To"] = email
-    msg["Subject"] = Header(f"Invitation: {room_name}", 'utf-8').encode()
+    msg["Subject"] = Header(f"Приглашение на конференцию: {room_name}", 'utf-8').encode()
     
     # HTML часть
     html = f"""
-    <div style="font-family: sans-serif; max-width: 600px; margin: auto; border: 1px solid #e5e7eb; border-radius: 16px; padding: 40px;">
-        <h2 style="color: #2563eb;">Meeting Invitation</h2>
-        <p><b>{inviter_name}</b> from <b>{org_name}</b> has invited you to a conference:</p>
-        <div style="background: #f3f4f6; padding: 20px; border-radius: 12px; margin: 20px 0;">
-            <p style="margin: 0; font-weight: bold; font-size: 18px;">{room_name}</p>
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Приглашение на конференцию - Potalkyem</title>
+    </head>
+    <body style="font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background-color: #f5f5f5;">
+        <div style="max-width: 560px; margin: 0 auto; background-color: #ffffff;">
+            <!-- Header -->
+            <div style="border-bottom: 1px solid #e0e0e0; padding: 24px 28px;">
+                <div style="font-size: 18px; font-weight: 600; color: #1a73e8;">Potalkyem</div>
+                <div style="font-size: 12px; color: #888888; margin-top: 4px;">Платформа для аудиоконференций</div>
+            </div>
+            
+            <!-- Content -->
+            <div style="padding: 32px 28px;">
+                <div style="font-size: 22px; font-weight: 600; color: #202124; margin-bottom: 16px;">
+                    Приглашение на конференцию
+                </div>
+                
+                <p style="color: #5f6368; line-height: 1.5; margin-bottom: 16px;">
+                    {inviter_name} из организации <strong>{org_name}</strong> 
+                    приглашает вас принять участие в аудиоконференции.
+                </p>
+                
+                <div style="background-color: #f8f9fa; padding: 20px; margin: 24px 0; border-left: 3px solid #1a73e8;">
+                    <p style="margin: 0 0 8px 0; font-weight: 600; color: #202124;">{room_name}</p>
+                    {'<p style="margin: 0; font-size: 13px; color: #5f6368;">🗓️ ' + scheduled_start_at.strftime("%d.%m.%Y в %H:%M") + '</p>' if scheduled_start_at else ''}
+                </div>
+                
+                <p style="color: #5f6368; line-height: 1.5; margin-bottom: 16px;">
+                    К данному письму прикреплён файл приглашения в календарь (.ics). 
+                    Вы можете импортировать его в ваш календарь (Google Календарь, Outlook и др.).
+                </p>
+                
+                <p style="color: #5f6368; line-height: 1.5; margin-bottom: 16px;">
+                    Для подключения к конференции нажмите на кнопку ниже:
+                </p>
+                
+                <div style="margin: 32px 0;">
+                    <a href="{join_url}" style="display: inline-block; background-color: #059669; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 4px; font-size: 14px; font-weight: 500;">
+                        Присоединиться к конференции
+                    </a>
+                </div>
+                
+                <div style="background-color: #f8f9fa; padding: 16px 20px; margin: 24px 0;">
+                    <p style="color: #5f6368; font-size: 13px; margin: 0;">
+                        <strong>Ссылка действительна:</strong> до окончания встречи
+                    </p>
+                    <p style="color: #5f6368; font-size: 13px; margin: 8px 0 0 0;">
+                        <strong>Для участия требуется:</strong> браузер с поддержкой WebRTC (Chrome, Firefox, Edge)
+                    </p>
+                </div>
+                
+                <p style="color: #9aa0a6; font-size: 11px; line-height: 1.5; margin-top: 24px; border-top: 1px solid #e0e0e0; padding-top: 20px;">
+                    Если вы не ожидали это приглашение, просто проигнорируйте данное письмо.
+                </p>
+            </div>
+            
+            <!-- Footer -->
+            <div style="border-top: 1px solid #e0e0e0; padding: 16px 28px; text-align: center;">
+                <p style="color: #9aa0a6; font-size: 11px; margin: 0;">
+                    © 2026 Potalkyem. Все права защищены.
+                </p>
+            </div>
         </div>
-        <p style="color: #666;">📅 A calendar invitation is attached — click to add to your Google/Outlook calendar.</p>
-        <a href="{join_url}" style="background: #059669; color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Join Meeting</a>
-    </div>
+    </body>
+    </html>
     """
     msg.attach(MIMEText(html, "html", "utf-8"))
     
@@ -176,7 +403,6 @@ async def send_room_invite_email_with_ics(
     ics_part.set_payload(ics_content)
     ics_part.add_header("Content-Disposition", "attachment; filename=\"invite.ics\"")
     encoders.encode_base64(ics_part)
-    ics_part.add_header("Content-Class", "urn:content-classes:calendarmessage")
     msg.attach(ics_part)
     
     async with _send_lock:
@@ -204,18 +430,74 @@ async def send_room_invite_email_with_ics(
         await asyncio.sleep(BATCH_DELAY)
         
 async def send_meeting_reminder_email(email: str, room_name: str, invite_code: str, start_time: datetime):
-    """Письмо-напоминание о скором начале встречи."""
+    """Письмо-напоминание о скором начале встречи (на русском)."""
     join_url = f"{FRONTEND_URL}/#/join/{invite_code}"
-    time_str = start_time.strftime("%H:%M")
+    time_str = start_time.strftime("%d.%m.%Y в %H:%M")
     
     html = f"""
-    <div style="font-family: sans-serif; max-width: 600px; margin: auto; border: 1px solid #e5e7eb; border-radius: 16px; padding: 40px;">
-        <h2 style="color: #2563eb;">⏰ Meeting Reminder</h2>
-        <p>Your meeting <b>{room_name}</b> starts at <b>{time_str}</b> (in 5 minutes).</p>
-        <div style="margin: 30px 0;">
-            <a href="{join_url}" style="background: #059669; color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px; font-weight: bold;">Join Meeting</a>
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Напоминание о конференции - Potalkyem</title>
+    </head>
+    <body style="font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background-color: #f5f5f5;">
+        <div style="max-width: 560px; margin: 0 auto; background-color: #ffffff;">
+            <!-- Header -->
+            <div style="border-bottom: 1px solid #e0e0e0; padding: 24px 28px;">
+                <div style="font-size: 18px; font-weight: 600; color: #1a73e8;">Potalkyem</div>
+                <div style="font-size: 12px; color: #888888; margin-top: 4px;">Платформа для аудиоконференций</div>
+            </div>
+            
+            <!-- Content -->
+            <div style="padding: 32px 28px;">
+                <div style="font-size: 22px; font-weight: 600; color: #202124; margin-bottom: 16px;">
+                    Напоминание о конференции
+                </div>
+                
+                <p style="color: #5f6368; line-height: 1.5; margin-bottom: 24px;">
+                    Уведомляем вас о начале запланированной конференции через 5 минут.
+                </p>
+                
+                <div style="background-color: #f8f9fa; padding: 20px; margin: 24px 0;">
+                    <p style="margin: 0 0 8px 0; font-weight: 600; color: #202124;">{room_name}</p>
+                    <p style="margin: 0; font-size: 13px; color: #5f6368;">📅 {time_str}</p>
+                </div>
+                
+                <p style="color: #5f6368; line-height: 1.5; margin-bottom: 16px;">
+                    Для подключения к конференции нажмите на кнопку ниже:
+                </p>
+                
+                <div style="margin: 32px 0;">
+                    <a href="{join_url}" style="display: inline-block; background-color: #059669; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 4px; font-size: 14px; font-weight: 500;">
+                        Присоединиться к конференции
+                    </a>
+                </div>
+                
+                <div style="background-color: #f8f9fa; padding: 16px 20px; margin: 24px 0;">
+                    <p style="color: #5f6368; font-size: 13px; margin: 0;">
+                        <strong>Пожалуйста, подготовьте:</strong>
+                    </p>
+                    <p style="color: #5f6368; font-size: 13px; margin: 8px 0 0 20px;">
+                        • Рабочий микрофон<br>
+                        • Стабильное интернет-соединение<br>
+                        • Браузер с поддержкой WebRTC
+                    </p>
+                </div>
+                
+                <p style="color: #9aa0a6; font-size: 11px; line-height: 1.5; margin-top: 24px; border-top: 1px solid #e0e0e0; padding-top: 20px;">
+                    Данное письмо было отправлено автоматически, пожалуйста, не отвечайте на него.
+                </p>
+            </div>
+            
+            <!-- Footer -->
+            <div style="border-top: 1px solid #e0e0e0; padding: 16px 28px; text-align: center;">
+                <p style="color: #9aa0a6; font-size: 11px; margin: 0;">
+                    © 2026 Potalkyem. Все права защищены.
+                </p>
+            </div>
         </div>
-        <p style="font-size: 12px; color: #9ca3af;">You're receiving this because you're a member of the organization.</p>
-    </div>
+    </body>
+    </html>
     """
-    await send_email(email, f"Reminder: {room_name} starts in 5 minutes", html)
+    await send_email(email, f"Напоминание: {room_name} начнется через 5 минут", html, from_name="Potalkyem")

@@ -129,5 +129,13 @@ export const api = {
     }),
     getById: (id: string) => fetchApi<ProtocolResponse>(`/protocols/${id}`, { method: 'GET' }),
     delete: (id: string) => fetchApi<void>(`/protocols/${id}`, { method: 'DELETE' }),
-  }
+  },
+  
+  support: {
+    sendMessage: (data: { subject: string; message: string; category: string }) =>
+      fetchApi<{success: boolean}>('/support/contact', { 
+        method: 'POST', 
+        body: JSON.stringify(data) 
+      }),
+  },
 };
